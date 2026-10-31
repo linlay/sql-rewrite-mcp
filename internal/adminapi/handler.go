@@ -151,23 +151,25 @@ func (a apiHandlers) policies(w http.ResponseWriter, r *http.Request) {
 
 func (a apiHandlers) query(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		SQL     string `json:"sql"`
-		MaxRows int    `json:"max_rows"`
+		Parameters map[string]any `json:"parameters,omitempty"`
+		SQL        string         `json:"sql"`
+		MaxRows    int            `json:"max_rows"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	result, err := a.store.RawQuery(r.Context(), in.SQL, in.MaxRows)
+	result, err := a.store.RawQueryWithParameters(r.Context(), in.SQL, in.MaxRows, in.Parameters)
 	respond(w, result, err)
 }
 
 // rewrite previews the rewrite for a user and, unless rejected, executes it.
 func (a apiHandlers) rewrite(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		SQL         string `json:"sql"`
-		UserID      int64  `json:"user_id"`
-		MaxRows     int    `json:"max_rows"`
-		PreviewOnly bool   `json:"preview_only"`
+		Parameters  map[string]any `json:"parameters,omitempty"`
+		SQL         string         `json:"sql"`
+		UserID      int64          `json:"user_id"`
+		MaxRows     int            `json:"max_rows"`
+		PreviewOnly bool           `json:"preview_only"`
 	}
 	if !decode(w, r, &in) {
 		return
@@ -200,7 +202,7 @@ func (a apiHandlers) rewrite(w http.ResponseWriter, r *http.Request) {
 	meta := audit.From(ctx)
 	meta.SubjectID = in.UserID
 	ctx = audit.With(ctx, meta)
-	res, err := a.svc.Rewrite(ctx, in.SQL, in.UserID)
+	res, err := a.svc.RewriteWithParameters(ctx, in.SQL, in.UserID, in.Parameters)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "denied": rewrite.IsDenied(err)})
 		return

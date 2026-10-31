@@ -11,6 +11,7 @@ import (
 
 	"datascope-server/internal/audit"
 	"datascope-server/internal/management"
+	"datascope-server/internal/queryparams"
 	"datascope-server/internal/rewrite"
 	"datascope-server/internal/store"
 )
@@ -115,9 +116,12 @@ type Rewritten struct {
 // Rewrite rewrites sql for userID and evaluates the configured deny_unless
 // guards of every referenced table. It does not execute the statement.
 func (s *QueryService) Rewrite(ctx context.Context, query string, userID int64) (*Rewritten, error) {
-	return s.rewriteWithParameters(ctx, query, userID, nil)
+	return s.RewriteWithParameters(ctx, query, userID, nil)
 }
-func (s *QueryService) rewriteWithParameters(ctx context.Context, query string, userID int64, parameters map[string]any) (out *Rewritten, err error) {
+func (s *QueryService) RewriteWithParameters(ctx context.Context, query string, userID int64, parameters map[string]any) (out *Rewritten, err error) {
+	if err := queryparams.Validate(parameters); err != nil {
+		return nil, err
+	}
 	m := audit.From(ctx)
 	m.DatabaseID = s.DatabaseID
 	m.SubjectID = userID
@@ -218,7 +222,7 @@ func (s *QueryService) QueryWithParameters(ctx context.Context, query string, us
 	m.DatabaseID = s.DatabaseID
 	m.PolicyVersion = s.PolicyVersion
 	ctx = audit.With(ctx, m)
-	r, e := s.rewriteWithParameters(ctx, query, userID, parameters)
+	r, e := s.RewriteWithParameters(ctx, query, userID, parameters)
 	if e != nil {
 		return nil, e
 	}

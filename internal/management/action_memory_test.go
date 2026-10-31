@@ -98,6 +98,15 @@ func TestActionMemorySocketPreservesConfirmationState(t *testing.T) {
 	if err = owner.Transition(ctx, r, "pending", "done", "result", "", 0); err != nil {
 		t.Fatal(err)
 	}
+	lookup, err := remote.Lookup(ctx, r)
+	if err != nil || lookup.State != "done" || lookup.Data != "result" {
+		t.Fatal(lookup, err)
+	}
+	missing := r
+	missing.RequestID = "missing"
+	if _, err := remote.Lookup(ctx, missing); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatal("lookup created missing receipt", err)
+	}
 	got, new, err := remote.Reserve(ctx, r)
 	if err != nil || new || got.State != "done" || got.Data != "result" {
 		t.Fatal(got, new, err)

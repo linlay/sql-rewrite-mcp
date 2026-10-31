@@ -25,7 +25,6 @@ export function DiscoveryPage({ id, onSaved }: {id:string;onSaved:()=>void}) {
  const [busy,setBusy] = useState(false);
  const [dirty,setDirty] = useState(false);
  const [remoteChanged,setRemoteChanged] = useState(false);
- const [policyOptionsOpen,setPolicyOptionsOpen] = useState(false);
  const [report,setReport] = useState<number>();
  const [comparison,setComparison] = useState<'pending'|'history'>();
  const [choices,setChoices] = useState<Record<string,boolean>>({});
@@ -40,7 +39,7 @@ export function DiscoveryPage({ id, onSaved }: {id:string;onSaved:()=>void}) {
  useEffect(()=>{
   let live=true;
   const timer=window.setInterval(()=>{
-   if(busy||editor||policyOptionsOpen)return;
+   if(busy||editor)return;
    void databases.get(id).then(next=>{
     if(!live)return;
     if(!dirty){accept(next);return;}
@@ -52,7 +51,7 @@ export function DiscoveryPage({ id, onSaved }: {id:string;onSaved:()=>void}) {
    }).catch(()=>undefined);
   },15000);
   return()=>{live=false;window.clearInterval(timer)};
- },[id,dirty,busy,editor,policyOptionsOpen]);
+ },[id,dirty,busy,editor]);
  const run = async (work:()=>Promise<Database>,text:string|((d:Database)=>string)) => {
   setBusy(true);setError(undefined);
   try {const next=await work();accept(next);message.success(typeof text==='string'?text:text(next));onSaved();return true}
@@ -122,7 +121,7 @@ export function DiscoveryPage({ id, onSaved }: {id:string;onSaved:()=>void}) {
       {key:'name',label:t("名称"),children:annotation?.display_name||current.name},
       {key:'comment',label:t("注释"),children:(annotation?.comment??current.comment)||t('（空）')},
      ]}/>
-     {policy&&<TablePolicyEditor key={`policy:${current.name}`} db={db} policy={policy} disabled={busy||!can('policy.write')} onChange={patch=>setPolicy(current.name,patch)} onOptionsOpen={setPolicyOptionsOpen}/>}
+     {policy&&<TablePolicyEditor key={`policy:${current.name}`} policy={policy} disabled={busy||!can('policy.write')} onChange={patch=>setPolicy(current.name,patch)}/>}
      <Text strong>{t("字段权限")}</Text>
      <Space wrap><Checkbox disabled={busy||!can('policy.write')||!policy} checked={policy?.columns==null} onChange={e=>setPolicy(current.name,{columns:e.target.checked?null:current.columns.map(c=>c.name)})}>{t("包含未来新增字段")}</Checkbox><Button size="small" disabled={busy||!can('policy.write')} onClick={()=>setPolicy(current.name,{columns:current.columns.map(c=>c.name)})}>{t("选择当前全部字段")}</Button></Space>
      <Table<Column> key={`columns:${current.name}`} rowKey="name" size="small" dataSource={current.columns} pagination={false} scroll={{x:700}} columns={[

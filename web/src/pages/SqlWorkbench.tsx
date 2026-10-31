@@ -41,6 +41,7 @@ function ResultSummary({ outcome }: { outcome?: Outcome<QueryResult> }) {
 export function SqlWorkbench({permissions,businessUserID}:{permissions:string[];businessUserID:number}) {
  const t=useI18n();
  const canRaw=permissions.includes("raw_query");const canImpersonate=permissions.includes("impersonate");
+  const [parameters, setParameters] = useState('{}');
   const [sql, setSql] = useState(examples[1].sql);
   const editor = useRef<TextAreaRef>(null);
   // Execution and formatting always read the live editor; never fall back to
@@ -71,11 +72,13 @@ export function SqlWorkbench({permissions,businessUserID}:{permissions:string[];
     if (next === 'raw') setRaw(undefined);
     else { setRewritten(undefined); setResult(undefined); setRewriteSource(currentSql); }
     try {
-      if (next === 'raw') setRaw({ data: await api.rawQuery(currentSql, maxRows) });
-      else if (next === 'preview') setRewritten({ data: await api.previewRewrite(currentSql, userId) });
+      const values = JSON.parse(parameters);
+      if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error(t('绑定参数必须是 JSON 对象'));
+      if (next === 'raw') setRaw({ data: await api.rawQuery(currentSql, maxRows, values) });
+      else if (next === 'preview') setRewritten({ data: await api.previewRewrite(currentSql, userId, values) });
       else {
         // The server regenerates and validates the statement and binds for this identity.
-        const data = await api.rewrite(currentSql, userId, maxRows);
+        const data = await api.rewrite(currentSql, userId, maxRows, values);
         setRewritten({ data });
         setResult({ data });
       }
@@ -107,6 +110,8 @@ export function SqlWorkbench({permissions,businessUserID}:{permissions:string[];
             <Input.TextArea ref={editor} aria-label={t("原始 SQL")} className="mono sql-editor" value={sql} disabled={disabled} onChange={(e) => changeSql(e.target.value)} style={{ height: 320, resize: 'vertical' }} onKeyDown={(e) => {
               if (canRaw && (e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void run('raw'); }
             }} />
+            <label><Text>{t('绑定参数 JSON（可选）')}</Text><Input.TextArea aria-label={t('绑定参数 JSON（可选）')} className="mono" rows={3} disabled={disabled} value={parameters} onChange={event => { setParameters(event.target.value); setRaw(undefined); setRewritten(undefined); setResult(undefined); }} /></label>
+            <Text type="secondary">{t('SQL 使用 :arg_name，参数填写 {"arg_name":"值"}。仅接受文本、数字、布尔值或 null；身份和授权时间由服务端提供。')}</Text>
           </Card>
           <Card size="small" title={t("原始结果")} extra={<ResultSummary outcome={raw} />}><QueryOutput outcome={raw} loading={action === 'raw'} /></Card>
         </section>

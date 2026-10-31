@@ -25,6 +25,10 @@ func PlatformHandler(app *application.Service, next http.Handler) http.Handler {
 		if external.handle(w, r) {
 			return
 		}
+		if r.URL.Path == "/api/action-oauth/callback" && r.Method == "GET" {
+			businessOAuthCallback(app, w, r)
+			return
+		}
 		if r.URL.Path == "/actions/confirm" {
 			confirmation.ServeHTTP(w, external.withIdentity(r))
 			return
@@ -207,6 +211,10 @@ func PlatformHandler(app *application.Service, next http.Handler) http.Handler {
 				return
 			}
 			writeJSON(w, 200, out)
+			return
+		}
+		if rest == "business-mcp" {
+			businessWorkbench(app, w, r, id)
 			return
 		}
 		permission := "config.read"

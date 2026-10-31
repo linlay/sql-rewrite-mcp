@@ -21,6 +21,7 @@ type ActionRequest struct {
 }
 
 type ActionState interface {
+	Lookup(context.Context, ActionRequest) (ActionRequest, error)
 	Reserve(context.Context, ActionRequest) (ActionRequest, bool, error)
 	Token(context.Context, string) (ActionRequest, error)
 	Transition(context.Context, ActionRequest, string, string, string, string, int64) error
@@ -132,4 +133,18 @@ func (m *MemoryActions) Transition(ctx context.Context, r ActionRequest, from, s
 	m.bytes += actionSize(next) - actionSize(old)
 	m.records[key] = next
 	return nil
+}
+
+// Lookup never creates a reservation, including after the owning process restarts.
+func (m *MemoryActions) Lookup(ctx context.Context, r ActionRequest) (ActionRequest, error) {
+	if err := ctx.Err(); err != nil {
+		return ActionRequest{}, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	record, ok := m.records[keyOf(r)]
+	if !ok {
+		return ActionRequest{}, sql.ErrNoRows
+	}
+	return record, nil
 }

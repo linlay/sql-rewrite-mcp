@@ -12,14 +12,16 @@ import (
 // CloneSnapshot exposes configuration through the storage boundary, never
 // accounts, grants, credentials or the filesystem's private state format.
 type CloneSnapshot struct {
-	Database  json.RawMessage
-	Knowledge []Record
-	Token     string
+	Database       json.RawMessage
+	Knowledge      []Record
+	Authentication ResolvedAuth
+	Token          string
 }
 
 type CloneReplacement struct {
-	Database  json.RawMessage
-	Knowledge []Record // nil preserves knowledge; a non-nil empty slice clears it.
+	Database       json.RawMessage
+	Authentication bool     // Explicit opt-in; caller must enforce system-admin authorization.
+	Knowledge      []Record // nil preserves knowledge; a non-nil empty slice clears it.
 }
 
 // CloneConfiguration serializes preview/commit with every management writer.
@@ -48,12 +50,26 @@ func (s *Store) CloneConfiguration(ctx context.Context, sourceID, targetID, sour
 		if err = target.withState(ctx, false, func(st *sourceState) error { dst = st; return nil }); err != nil {
 			return err
 		}
-		snapshot := func(st *sourceState) CloneSnapshot {
-			raw, _ := json.Marshal(st)
+		snapshot := func(st *sourceState, id string) (CloneSnapshot, error) {
+			auth, err := s.ResolveAuth(ctx, "DATABASE", id)
+			if err != nil {
+				return CloneSnapshot{}, err
+			}
+			raw, _ := json.Marshal(struct {
+				State *sourceState
+				Auth  ResolvedAuth
+			}{st, auth})
 			db, _ := json.Marshal(st.Database)
-			return CloneSnapshot{Database: db, Knowledge: append([]Record{}, st.Records["knowledge"]...), Token: fmt.Sprintf("%x", sha256.Sum256(raw))}
+			return CloneSnapshot{Database: db, Knowledge: append([]Record{}, st.Records["knowledge"]...), Authentication: auth, Token: fmt.Sprintf("%x", sha256.Sum256(raw))}, nil
 		}
-		a, b := snapshot(src), snapshot(dst)
+		a, err := snapshot(src, sourceID)
+		if err != nil {
+			return err
+		}
+		b, err := snapshot(dst, targetID)
+		if err != nil {
+			return err
+		}
 		if commit && (sourceToken == "" || targetToken == "" || a.Token != sourceToken || b.Token != targetToken) {
 			return errors.New("来源库或目标库配置已更新，请重新预览后确认")
 		}
@@ -71,6 +87,10 @@ func (s *Store) CloneConfiguration(ctx context.Context, sourceID, targetID, sour
 		// Defense in depth: a clone cannot modify connections, identities,
 		// authentication, MCP routes, enable flags or any new future setting.
 		allowed := map[string]bool{"config": true, "discovery": true, "actions": true, "revision": true}
+		if replacement.Authentication {
+			allowed["authentication"] = true
+			allowed["authentication_revision"] = true
+		}
 		for k, value := range next {
 			if !allowed[k] && !reflect.DeepEqual(value, dst.Database[k]) {
 				return fmt.Errorf("克隆不能修改目标配置 %s", k)

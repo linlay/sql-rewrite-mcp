@@ -67,6 +67,8 @@
 
 ## 克隆配置
 
-当前 database_id 是目标库。先调用 `datascope_inspect`，`action:"preview_clone_configuration"`，args 包含 `resourceType:"database"`、`database_id` 和 `clone:{source_database_id,scope:{tables:true,policies:true,actions:true,knowledge:true}}`。省略 scope 默认四项全部选择。返回覆盖摘要、issues、warnings、source_revision、target_revision、source_token、target_token、confirmation。展示摘要并得到用户确认；issues 非空不能执行。
+当前 database_id 是目标库。先调用 `datascope_inspect`，`action:"preview_clone_configuration"`，args 包含 `resourceType:"database"`、`database_id` 和 `clone:{source_database_id,scope:{tables:true,policies:true,actions:true,knowledge:true,authentication:false}}`。省略 scope 默认四项全部选择。返回覆盖摘要、issues、warnings、source_revision、target_revision、source_token、target_token、confirmation。展示摘要并得到用户确认；issues 非空不能执行。
 
-确认后调用 `datascope_manage`，`action:"clone_configuration"`，使用相同 args.clone，补齐上述六个版本/确认字段及 `confirmed:true`。配置或目标结构变化需要重新预览。同名表配置覆盖、目标独有表保留；Actions 和知识整组替换，包含删除目标独有项。知识 ID 保留、归属改为目标库。保留目标连接/密码/密钥、ID/名称、认证、账号、人员授权和身份绑定、MCP 与写入开关、审计和回执；不复制业务数据。静态依赖检查不证明 JavaScript / SQL 的业务兼容性。
+确认后调用 `datascope_manage`，`action:"clone_configuration"`，使用相同 args.clone，补齐上述六个版本/确认字段及 `confirmed:true`。配置或目标结构变化需要重新预览。同名表配置覆盖、目标独有表保留；Actions 和知识整组替换，包含删除目标独有项。知识 ID 保留、归属改为目标库。保留目标连接/密码/密钥、ID/名称、账号、人员授权和身份绑定、MCP 与写入开关、审计和回执；不复制业务数据。静态依赖检查不证明 JavaScript / SQL 的业务兼容性。
+
+认证配置为默认不选的独立范围 scope.authentication:true，仅系统管理员可预览和提交。复制认证方式及全局提供方引用或本库独立连接，环境变量密钥仅复制引用。保留目标业务能力、默认身份、账号、人员授权和身份绑定，认证版本递增使旧业务 Token 与待确认操作失效。未选择时保留目标认证。确认指纹包含解析后的认证策略、提供方及全局认证 revision；全局引用更新后必须重做预览。

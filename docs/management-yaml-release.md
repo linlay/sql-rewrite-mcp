@@ -78,3 +78,13 @@ API 与 MCP 每次读取当前 YAML，使用同机文件锁协调。多文件更
 回退需停止新服务，恢复同一批次的全局和逐库 SQLite 快照与密钥，运行上一版二进制。升级后产生的 YAML 修改不会写回历史 SQLite，回退前单独保存。禁止新旧二进制同时运行。
 
 配置克隆和运行状态清理由其他独立任务实现；本次 YAML 任务不改变知识关联或其他设置的产品设计。没有新建磁盘业务 SQLite 缓存或双写路径。
+
+## 后续收尾（2026-10-31）
+
+本次不重新执行已验收的迁移。知识编辑收敛为名称、三行 description、正文和发布状态；旧关联限制默认保留，解除需明确确认后保存。表权限移除方案分类与“其他设置”弹框，直接显示行权限 SQL 和行数限制；已有查询准入条件及拒绝提示继续直接编辑并参与检查。
+
+SQL 工作台的参数 JSON 经相同 arg_ 标量校验、命名绑定和后端编译用于预览及执行；raw_query 仍需独立权限。动作工作台补齐本人业务认证、真实 MCP、回滚预览、本人确认和只读回执查询。克隆增加默认不选、仅系统管理员可用的认证范围，保留目标账号与授权，按认证版本撤销旧 Token。详见 [Actions](actions.md)、[配置克隆](configuration-clone.md) 和 [运行时状态](runtime-state.md)。
+
+收尾验收：`go test ./...`、`npm run build --prefix web`、`node --test deploy/connectors/tests/*.test.cjs` 全部通过（连接器 16 项）。新增回归覆盖知识限制显式解除、参数注入与身份覆盖拒绝、认证克隆默认关闭/系统管理员边界/授权保留/全局认证变更后旧预览拒绝、NONE/ACCOUNT/OAUTH 的真实 MCP 调用，以及 Unix socket 只读回执查询。
+
+隔离浏览器验收 `TestWorkbenchBrowserHarness` 已通过：本人 OAuth 登录 → list_actions → describe_action → invoke_action 回滚预览 → 本人打开原确认页登录提交 → 同 request_id 只读取回结果；无需人工确认的 Action 也经明确点击后正式写入。另已验证 SQL 绑定参数的原始执行、权限预览与执行、参数变化使旧结果失效，知识普通保存保留限制与明确解除，以及表权限和默认不选的认证克隆界面。浏览器无运行异常；所有正式写入只针对 t.TempDir 内的隔离 SQLite，未改动真实证券演示数据。NONE 下需要本人确认的动作不会由其他账号代签，界面要求配置账号或 OAuth；企业 OAuth 继续使用本人从既有提供方取得的 Bearer Token。

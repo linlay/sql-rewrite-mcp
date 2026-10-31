@@ -6,7 +6,7 @@
 
 ## 可重建数据
 
-- 知识检索在内存中处理本次读取的正式 YAML 内容；`prompts/list` 和 `prompts/get` 读取同一份 description 和正文。权限检查每次使用当前账号、授权和表策略，无缓存有效期延迟。
+- 知识检索在内存中处理本次读取的正式 YAML 内容；`prompts/list` 和 `prompts/get` 读取同一份 description 和正文。权限检查每次使用当前账号和授权；旧知识关联限制仍按当前表策略过滤，普通保存保留，只有明确确认解除并保存后才取消。新建知识无需关联表。无缓存有效期延迟。
 - 权限 SQL 的编译结果及绑定名列表只在请求内存中存在，保存时去除 `compiled_sql`、`compiled_deny_unless`、`params` 与 `deny_unless_params`。Action 自己的参数定义和 tagged SQL 不受此清理影响。
 - API 与 MCP 的正式配置读取通过相同文件锁读取完整 YAML 世代，每次请求重读；任一进程保存后，另一进程下一次读取立即可见。旧身份版本或被撤销的权限不能靠已有 MCP 会话继续使用。
 
@@ -24,7 +24,7 @@
 
 公共 SQL 片段只由离线一次性迁移解析并递归展开到每张表的权限 SQL 和前置检查，`${userId}` 等身份与 SQL 绑定保持原文。缺失、循环及格式错误明确失败，不跳过权限、不发布不完整规则。旧命名查询不进入运行时，原内容留在升级备份中。旧扫描辅助记录、编译结果和历史版本不迁入新配置。对已经生成过早期 YAML 的环境，停服后再次执行 `go run ./cmd/migrate-state -data-dir data`：仅在发现派生字段时备份原 YAML 及密钥并清理，保持当前 revision；再次执行不重复备份。
 
-Action 幂等登记、回执和确认令牌继续由 MCP 内存持有，API 通过私有 Unix socket 共享；重启清空，不进入 YAML、业务 SQLite 或审计回执表。普通审计独立异步写入 `audit.db`，失败不影响功能。
+Action 幂等登记、回执和确认令牌继续由 MCP 内存持有，API 通过私有 Unix socket 共享；重启清空，不进入 YAML、业务 SQLite 或审计回执表。工作台正式调用通过本人业务认证访问真实 MCP；确认后使用同一 request_id 并设置 result_only:true 查询回执。查询缺失回执返回 unknown，绝不重新登记或执行写入。普通审计独立异步写入 `audit.db`，失败不影响功能。
 
 升级前一致性快照、原始旧库、独立 `audit.db` 都有各自职责，保留不删。YAML 的 `.next` / `.previous` 和全局提交日志仅用于中断恢复，完成提交后清理，不构成历史版本存储。
 

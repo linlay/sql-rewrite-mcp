@@ -27,6 +27,12 @@ func (s *Service) CloneConfiguration(ctx context.Context, in Input, commit bool)
 			return err
 		}
 		permissions := []string{}
+		if scope.Authentication {
+			u, _ := guard.User(ctx)
+			if !u.SystemAdmin {
+				return management.ErrDenied
+			}
+		}
 		if scope.Tables {
 			permissions = append(permissions, "config.write", "policy.write")
 		}

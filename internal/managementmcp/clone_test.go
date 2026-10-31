@@ -20,6 +20,11 @@ func TestCloneManagementRoutes(t *testing.T) {
 			t.Fatal("clone accepted by query tool")
 		}
 		in.Args["clone"] = json.RawMessage(`{"source_database_id":"source","scope":{"authentication":true}}`)
+		_, auth, err := decode(tc.tool, in)
+		if err != nil || auth.Clone == nil || !auth.Clone.Scope.Authentication {
+			t.Fatalf("authentication scope rejected: %v", err)
+		}
+		in.Args["clone"] = json.RawMessage(`{"source_database_id":"source","scope":{"unknown":true}}`)
 		if _, _, err = decode(tc.tool, in); err == nil {
 			t.Fatal("unknown clone scope accepted")
 		}

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Empty, Input, InputNumber, Space, Spin, Table, Tab
 import type { ActionDescription, ActionPreview, ActionSchema, Database } from '../api';
 import { useAuth } from '../Auth';
 import { CodeEditor } from '../components/CodeEditor';
+import BusinessActionWorkbench from '../components/BusinessActionWorkbench';
 import { HelpTip } from '../components/HelpTip';
 import { CallDetails, JsonData, invoke, type Invocation } from '../components/ToolCallTrace';
 import { useI18n } from '../ui/preferences';
@@ -17,7 +18,8 @@ function argumentTemplate(schema?: ActionSchema) {
 }
 
 export default function ActionWorkbench({ db }: { db: Database }) {
- return <ActionWorkflow key={db.id} db={db} />;
+ const t = useI18n();
+ return <Tabs key={db.id} destroyOnHidden items={[{key:'trial',label:t('试运行（回滚）'),children:<ActionWorkflow db={db} />},{key:'business',label:t('真实业务调用'),children:<BusinessActionWorkbench key={db.id} db={db} />}]} />;
 }
 
 function ActionWorkflow({ db }: { db: Database }) {
@@ -81,7 +83,7 @@ function ActionWorkflow({ db }: { db: Database }) {
  const writes = trial?.data?.preview?.writes || [];
 
  return <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-  <Space wrap size="small"><Tag>{t('MCP 流程模拟')}</Tag><Typography.Text type="secondary">{t('动作列表 → 参数说明 → 试运行')}</Typography.Text><Space size={4}><Tag color="blue">{t('始终回滚')}</Tag><HelpTip label={t('动作工作台')}>{t('以平台权限查看 describe_action 的同格式说明，使用 try_action 模拟执行。需要模拟业务身份权限；正式写入和人工确认请通过业务 MCP。')}</HelpTip></Space></Space>
+  <Space wrap size="small"><Tag>{t('MCP 流程模拟')}</Tag><Typography.Text type="secondary">{t('动作列表 → 参数说明 → 试运行')}</Typography.Text><Space size={4}><Tag color="blue">{t('始终回滚')}</Tag><HelpTip label={t('动作工作台')}>{t('以平台权限查看 describe_action 的同格式说明，使用 try_action 模拟执行。需要模拟业务身份权限；切换到真实业务调用，通过本人业务认证执行正式操作。')}</HelpTip></Space></Space>
   <div className="action-workbench">
    <Card size="small" className="knowledge-call-panel action-browse-step" title={t('1. 获取动作列表')} extra={<Typography.Text code>list_actions</Typography.Text>}>
     <div className="knowledge-call-form"><Input aria-label={t('搜索动作')} placeholder={t('搜索名称、标题、说明')} allowClear value={filter} onChange={event => setFilter(event.target.value)} /><Button type="primary" loading={listing} onClick={() => void loadList()}>{t('获取列表')}</Button></div>

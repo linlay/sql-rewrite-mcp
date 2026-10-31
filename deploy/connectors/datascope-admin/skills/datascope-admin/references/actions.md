@@ -9,4 +9,4 @@
 
 script 定义同步 `function run(args,ctx)`；`ctx.userId` 是业务身份，`ctx.now` 是固定时间。`my.one` / `my.all` 应用现有查询权限，`db.one` / `db.all` 读取可信业务数据，`db.exec` 执行 INSERT/UPDATE/DELETE 并返回影响行数。所有 SQL 使用标签模板，值写 `${args.name}`，不能拼接 SQL、传字符串、动态表名或在引号中插值。UPDATE/DELETE 必须有 WHERE，建议附关键权限和状态条件并检查影响行数。deny、异常、超时回滚；捕获 deny/SQL 错误也不能提交。金额用整数分，BIGINT/DECIMAL 为字符串。
 
-业务调用使用 invoke_action 的 name、arguments、request_id。confirm:true 先完整执行并回滚，返回预览和 confirmation_url。模型只能展示预览/链接，由同一业务账号本人打开确认页登录并确认；管理 MCP 不能代替人工确认。确认后用相同参数和 request_id 获取历史结果。结果未知时先核对审计及业务记录，绝不盲目换 ID 重试。回执只在 MCP 运行实例内存中保留，重启清空，独立实例不共享；API 确认页通过本地 Unix socket 访问同一实例，不提供跨重启幂等。
+业务调用使用 invoke_action 的 name、arguments、request_id。confirm:true 先完整执行并回滚，返回预览和 confirmation_url。模型只能展示预览/链接，由同一业务账号本人打开确认页登录并确认；管理 MCP 不能代替人工确认。确认后用相同 request_id 调用 invoke_action，指定 result_only:true 只读获取回执；没有回执返回 unknown，绝不再次执行。结果未知时先核对审计及业务记录，绝不盲目换 ID 重试。回执只在 MCP 运行实例内存中保留，重启清空，独立实例不共享；API 确认页通过本地 Unix socket 访问同一实例，不提供跨重启幂等。

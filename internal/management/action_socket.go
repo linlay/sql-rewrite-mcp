@@ -82,6 +82,8 @@ func ServeActionMemory(ctx context.Context, path string, state ActionState) (fun
 		out := actionReply{}
 		var err error
 		switch in.Operation {
+		case "lookup":
+			out.Record, err = state.Lookup(r.Context(), in.Record)
 		case "reserve":
 			out.Record, out.Fresh, err = state.Reserve(r.Context(), in.Record)
 		case "token":
@@ -163,4 +165,9 @@ func (r *remoteActions) Token(ctx context.Context, token string) (ActionRequest,
 func (r *remoteActions) Transition(ctx context.Context, in ActionRequest, from, state, data, token string, expires int64) error {
 	_, err := r.call(ctx, actionRPC{Operation: "transition", Record: in, From: from, State: state, Data: data, Token: token, Expires: expires})
 	return err
+}
+
+func (r *remoteActions) Lookup(ctx context.Context, in ActionRequest) (ActionRequest, error) {
+	out, err := r.call(ctx, actionRPC{Operation: "lookup", Record: in})
+	return out.Record, err
 }

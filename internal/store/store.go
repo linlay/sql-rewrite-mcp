@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"datascope-server/internal/audit"
 	"datascope-server/internal/dialect"
+	"datascope-server/internal/queryparams"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -145,6 +146,12 @@ func (s *Store) QueryBool(ctx context.Context, query string, args ...any) (out b
 
 // RawQuery runs a single read-only query or a whitelisted schema PRAGMA without rewriting. The connection is still read-only. Debug use only.
 func (s *Store) RawQuery(ctx context.Context, rawSQL string, maxRows int) (*QueryResult, error) {
+	return s.RawQueryWithParameters(ctx, rawSQL, maxRows, nil)
+}
+func (s *Store) RawQueryWithParameters(ctx context.Context, rawSQL string, maxRows int, parameters map[string]any) (*QueryResult, error) {
+	if err := queryparams.Validate(parameters); err != nil {
+		return nil, err
+	}
 	if e := s.validateAudit(ctx, rawSQL, true); e != nil {
 		return nil, e
 	}
@@ -158,7 +165,11 @@ func (s *Store) RawQuery(ctx context.Context, rawSQL string, maxRows int) (*Quer
 	maxRows = min(maxRows, HardMaxRows)
 	ctx, cancel := context.WithTimeout(ctx, s.queryTimeout)
 	defer cancel()
-	result, err := s.read(ctx, maxRows, body)
+	args, err := queryparams.Args(body, parameters)
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.read(ctx, maxRows, body, args...)
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return nil, fmt.Errorf("查询超过 %s 被中断", s.queryTimeout)
 	}

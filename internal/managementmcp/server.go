@@ -70,7 +70,7 @@ var operations = map[string][]operation{
 		{"user", "enable", "enable_user", "user_id", ""},
 		{"user", "disable", "disable_user", "user_id", ""},
 		{"user", "reset_password", "reset_password", "user_id password", ""},
-		{"knowledge", "save", "save_knowledge", "database_id id name description content tables published revision", "summary"},
+		{"knowledge", "save", "save_knowledge", "database_id id name description content published revision", "summary tables release_knowledge_restrictions"},
 	},
 	"datascope_inspect": {
 		{"database", "preview_clone_configuration", "preview_clone_configuration", "database_id clone", ""},
@@ -78,7 +78,7 @@ var operations = map[string][]operation{
 		{"connection", "test", "test_database_connection", "database", "password"},
 		{"database", "test_connection", "test_connection", "database_id", ""},
 		{"policy", "validate", "validate_policy", "database_id database", ""},
-		{"policy", "preview_rewrite", "preview_rewrite", "database_id sql", "business_user_id"},
+		{"policy", "preview_rewrite", "preview_rewrite", "database_id sql", "business_user_id parameters"},
 	},
 }
 

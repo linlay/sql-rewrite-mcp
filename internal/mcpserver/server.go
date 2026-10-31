@@ -4,8 +4,6 @@ package mcpserver
 import (
 	"context"
 	"fmt"
-	"math"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +15,7 @@ import (
 	"datascope-server/internal/catalog"
 	"datascope-server/internal/guard"
 	"datascope-server/internal/management"
+	"datascope-server/internal/queryparams"
 	"datascope-server/internal/rewrite"
 	"datascope-server/internal/service"
 	"datascope-server/internal/store"
@@ -95,7 +94,7 @@ func New(svc *service.QueryService, opts Options) *mcp.Server {
 	if opts.Management != nil {
 		mcp.AddTool(server, &mcp.Tool{Name: "list_actions", Description: "列出可用业务 action 的名称、说明和人工确认要求；再用 describe_action(name) 获取完整参数格式。", Annotations: readOnly("列出业务操作")}, h.listActions)
 		mcp.AddTool(server, &mcp.Tool{Name: "describe_action", Description: "按 name 查看单个业务 action 的说明和完整参数 JSON Schema。先用 list_actions 获取名称。", Annotations: readOnly("查看业务操作")}, h.describeAction)
-		mcp.AddTool(server, &mcp.Tool{Name: "invoke_action", Description: "执行业务 action。request_id 必须唯一，同一服务运行期间重试使用同一值。回执仅保存在内存，服务重启后清空，不应自动重试重启前结果未知的写入。confirm_required 时向人展示 preview 和 confirmation_url；由本人打开页面登录确认后，使用相同 request_id 查询结果。模型不能代替人确认。", Annotations: &mcp.ToolAnnotations{Title: "执行业务操作", IdempotentHint: false}}, h.invokeAction)
+		mcp.AddTool(server, &mcp.Tool{Name: "invoke_action", Description: "执行业务 action。request_id 必须唯一，同一服务运行期间重试使用同一值。回执仅保存在内存，服务重启后清空，不应自动重试重启前结果未知的写入。confirm_required 时向人展示 preview 和 confirmation_url；由本人打开页面登录确认后，使用相同 request_id 并设置 result_only:true 只查询回执；无回执时不会再次写入。模型不能代替人确认。", Annotations: &mcp.ToolAnnotations{Title: "执行业务操作", IdempotentHint: false}}, h.invokeAction)
 	}
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -289,22 +288,8 @@ func (h handlers) query(ctx context.Context, req *mcp.CallToolRequest, in queryI
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(in.Parameters) > 100 {
-		return nil, nil, fmt.Errorf("绑定参数最多 100 个")
-	}
-	for name, value := range in.Parameters {
-		if !queryParameterName.MatchString(name) {
-			return nil, nil, fmt.Errorf("业务参数必须使用 arg_ 前缀，不能覆盖身份参数")
-		}
-		switch v := value.(type) {
-		case nil, string, bool:
-		case float64:
-			if math.IsNaN(v) || math.IsInf(v, 0) {
-				return nil, nil, fmt.Errorf("参数 %s 必须是有限数字", name)
-			}
-		default:
-			return nil, nil, fmt.Errorf("参数 %s 必须是标量", name)
-		}
+	if err := queryparams.Validate(in.Parameters); err != nil {
+		return nil, nil, err
 	}
 	res, err := h.svc.QueryWithParameters(ctx, in.SQL, uid, in.MaxRows, in.Parameters)
 	if err != nil {
@@ -317,11 +302,10 @@ func (h handlers) query(ctx context.Context, req *mcp.CallToolRequest, in queryI
 	return nil, out, nil
 }
 
-var queryParameterName = regexp.MustCompile(`^arg_[A-Za-z][A-Za-z0-9_]{0,59}$`)
-
 type rawQueryInput struct {
-	SQL     string `json:"sql" jsonschema:"单条只读 SELECT / WITH / VALUES 或允许的结构查看 PRAGMA，按原样执行，不做权限改写"`
-	MaxRows int    `json:"max_rows,omitempty" jsonschema:"最多返回的行数，默认 200，上限 1000"`
+	Parameters map[string]any `json:"parameters,omitempty"`
+	SQL        string         `json:"sql" jsonschema:"单条只读 SELECT / WITH / VALUES 或允许的结构查看 PRAGMA，按原样执行，不做权限改写"`
+	MaxRows    int            `json:"max_rows,omitempty" jsonschema:"最多返回的行数，默认 200，上限 1000"`
 }
 
 func (h handlers) rawQuery(ctx context.Context, req *mcp.CallToolRequest, in rawQueryInput) (*mcp.CallToolResult, *store.QueryResult, error) {
@@ -329,7 +313,7 @@ func (h handlers) rawQuery(ctx context.Context, req *mcp.CallToolRequest, in raw
 	if err := h.debugAllowed(ctx, req); err != nil {
 		return nil, nil, err
 	}
-	result, err := h.svc.Store.RawQuery(ctx, in.SQL, in.MaxRows)
+	result, err := h.svc.Store.RawQueryWithParameters(ctx, in.SQL, in.MaxRows, in.Parameters)
 	if err != nil {
 		return nil, nil, err
 	}

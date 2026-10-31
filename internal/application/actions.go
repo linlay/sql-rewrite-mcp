@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -356,4 +357,47 @@ func (s *Service) ConfirmAction(ctx context.Context, token, password string) (*A
 		return nil, e
 	}
 	return res, nil
+}
+
+// ActionResult is a read-only receipt lookup under the authenticated business
+// identity. Missing receipts (including after restart) must never invoke writes.
+func (s *Service) ActionResult(ctx context.Context, database, name, requestID string) (*ActionResponse, error) {
+	if err := guard.Require(ctx, s.Management, database, "action"); err != nil {
+		return nil, err
+	}
+	a, ok := guard.Business(ctx)
+	if !ok || a.DatabaseID != database {
+		return nil, management.ErrDenied
+	}
+	if len(requestID) < 1 || len(requestID) > 128 || strings.TrimSpace(requestID) != requestID {
+		return nil, errors.New("request_id 必填且最多 128 字符")
+	}
+	d, _, err := s.actionDefinition(ctx, database, name, true)
+	if err != nil {
+		return nil, err
+	}
+	rec, err := s.Management.Actions.Lookup(ctx, management.ActionRequest{DatabaseID: database, Actor: fmt.Sprintf("business:%d", a.ID), RequestID: requestID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return &ActionResponse{Status: "unknown", Message: "回执不存在或 MCP 已重启；请核对审计和业务数据，不要重试未知结果的写入。"}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var payload actionPayload
+	if err = json.Unmarshal([]byte(rec.Data), &payload); err != nil {
+		return nil, err
+	}
+	if payload.Name != name || payload.AccountRevision != a.AuthVersion || payload.UserID != a.BusinessUserID || payload.AuthenticationVersion != d.AuthenticationVersion() {
+		return nil, management.ErrDenied
+	}
+	if payload.Response != nil {
+		return payload.Response, nil
+	}
+	if rec.State == "pending" {
+		if rec.Revision != d.Revision || rec.Expires <= time.Now().Unix() {
+			return &ActionResponse{Status: "denied", Message: "确认预览已失效"}, nil
+		}
+		return s.confirmResponse(rec, &payload), nil
+	}
+	return &ActionResponse{Status: "unknown", Message: "请求正在执行或结果未知，请核对审计。"}, nil
 }

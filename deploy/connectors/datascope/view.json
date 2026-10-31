@@ -65,7 +65,7 @@
     },
     "action": {
       "title": "确认业务操作",
-      "description": "Display a confirm_required response from invoke_action. Copy preview and confirmation_url from the tool response exactly. The human opens the confirmation page and signs in with the originating business account. Never submit credentials or confirm on the human's behalf; after confirmation, call invoke_action with the original request_id to retrieve its result.",
+      "description": "Display a confirm_required response from invoke_action. Copy preview and confirmation_url from the tool response exactly. The human opens the confirmation page and signs in with the originating business account. Never submit credentials or confirm on the human's behalf; after confirmation, call invoke_action with the original request_id and result_only:true to retrieve its receipt without executing again. A missing receipt is unknown; never retry unknown writes after an MCP restart.",
       "renderer": "html",
       "usage": [
         "display"

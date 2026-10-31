@@ -24,44 +24,46 @@ type Service struct {
 	SecureCookies    bool
 }
 type Input struct {
-	Clone          *catalog.CloneRequest          `json:"clone,omitempty"`
-	AuthConfig     *management.AuthConfig         `json:"auth_config,omitempty"`
-	Arguments      map[string]any                 `json:"arguments,omitempty"`
-	WritePassword  string                         `json:"write_password,omitempty"`
-	ActorID        *int64                         `json:"actor_id,omitempty"`
-	PlatformOnly   bool                           `json:"platform_only,omitempty"`
-	Kind           string                         `json:"kind,omitempty"`
-	Source         string                         `json:"source,omitempty"`
-	Status         string                         `json:"status,omitempty"`
-	Tool           string                         `json:"tool,omitempty"`
-	StartedFrom    string                         `json:"started_from,omitempty"`
-	StartedTo      string                         `json:"started_to,omitempty"`
-	Resolutions    []catalog.AnnotationResolution `json:"resolutions,omitempty"`
-	Table          string                         `json:"table,omitempty"`
-	Column         string                         `json:"column,omitempty"`
-	Annotation     *store.Annotation              `json:"annotation,omitempty"`
-	Account        *management.BusinessAccount    `json:"account,omitempty"`
-	DatabaseID     string                         `json:"database_id,omitempty"`
-	UserID         int64                          `json:"user_id,omitempty"`
-	Username       string                         `json:"username,omitempty"`
-	Name           string                         `json:"name,omitempty"`
-	Password       string                         `json:"password,omitempty"`
-	Database       *catalog.Database              `json:"database,omitempty"`
-	Permissions    []string                       `json:"permissions,omitempty"`
-	BusinessUserID int64                          `json:"business_user_id,omitempty"`
-	SQL            string                         `json:"sql,omitempty"`
-	Query          string                         `json:"query,omitempty"`
-	ID             string                         `json:"id,omitempty"`
-	Description    *string                        `json:"description,omitempty"`
-	Summary        *string                        `json:"summary,omitempty"` // Legacy request alias.
-	Content        string                         `json:"content,omitempty"`
-	Tables         []string                       `json:"tables,omitempty"`
-	Published      bool                           `json:"published,omitempty"`
-	Revision       int                            `json:"revision,omitempty"`
-	Limit          int                            `json:"limit,omitempty"`
-	Offset         int                            `json:"offset,omitempty"`
-	RequestID      string                         `json:"request_id,omitempty"`
-	Cursor         string                         `json:"cursor,omitempty"`
+	Parameters                   map[string]any                 `json:"parameters,omitempty"`
+	ReleaseKnowledgeRestrictions bool                           `json:"release_knowledge_restrictions,omitempty"`
+	Clone                        *catalog.CloneRequest          `json:"clone,omitempty"`
+	AuthConfig                   *management.AuthConfig         `json:"auth_config,omitempty"`
+	Arguments                    map[string]any                 `json:"arguments,omitempty"`
+	WritePassword                string                         `json:"write_password,omitempty"`
+	ActorID                      *int64                         `json:"actor_id,omitempty"`
+	PlatformOnly                 bool                           `json:"platform_only,omitempty"`
+	Kind                         string                         `json:"kind,omitempty"`
+	Source                       string                         `json:"source,omitempty"`
+	Status                       string                         `json:"status,omitempty"`
+	Tool                         string                         `json:"tool,omitempty"`
+	StartedFrom                  string                         `json:"started_from,omitempty"`
+	StartedTo                    string                         `json:"started_to,omitempty"`
+	Resolutions                  []catalog.AnnotationResolution `json:"resolutions,omitempty"`
+	Table                        string                         `json:"table,omitempty"`
+	Column                       string                         `json:"column,omitempty"`
+	Annotation                   *store.Annotation              `json:"annotation,omitempty"`
+	Account                      *management.BusinessAccount    `json:"account,omitempty"`
+	DatabaseID                   string                         `json:"database_id,omitempty"`
+	UserID                       int64                          `json:"user_id,omitempty"`
+	Username                     string                         `json:"username,omitempty"`
+	Name                         string                         `json:"name,omitempty"`
+	Password                     string                         `json:"password,omitempty"`
+	Database                     *catalog.Database              `json:"database,omitempty"`
+	Permissions                  []string                       `json:"permissions,omitempty"`
+	BusinessUserID               int64                          `json:"business_user_id,omitempty"`
+	SQL                          string                         `json:"sql,omitempty"`
+	Query                        string                         `json:"query,omitempty"`
+	ID                           string                         `json:"id,omitempty"`
+	Description                  *string                        `json:"description,omitempty"`
+	Summary                      *string                        `json:"summary,omitempty"` // Legacy request alias.
+	Content                      string                         `json:"content,omitempty"`
+	Tables                       []string                       `json:"tables,omitempty"`
+	Published                    bool                           `json:"published,omitempty"`
+	Revision                     int                            `json:"revision,omitempty"`
+	Limit                        int                            `json:"limit,omitempty"`
+	Offset                       int                            `json:"offset,omitempty"`
+	RequestID                    string                         `json:"request_id,omitempty"`
+	Cursor                       string                         `json:"cursor,omitempty"`
 }
 type Knowledge struct {
 	ID          string   `json:"id"`
@@ -69,7 +71,7 @@ type Knowledge struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Content     string   `json:"content,omitempty"`
-	Tables      []string `json:"tables"`
+	Tables      []string `json:"tables,omitempty"`
 	Published   bool     `json:"published"`
 	Revision    int      `json:"revision"`
 }
@@ -507,7 +509,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 			return nil, e
 		}
 		defer svc.Store.Close()
-		return svc.Rewrite(ctx, in.SQL, bid)
+		return svc.RewriteWithParameters(ctx, in.SQL, bid, in.Parameters)
 	case "search_audit_events", "get_audit_page":
 		if (in.DatabaseID == "" || in.PlatformOnly) && !u.SystemAdmin {
 			return nil, management.ErrDenied
@@ -586,7 +588,17 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 			if description != nil {
 				text = *description
 			}
-			saved = Knowledge{ID: in.ID, DatabaseID: in.DatabaseID, Name: in.Name, Description: text, Content: in.Content, Tables: in.Tables, Published: in.Published, Revision: old.Revision + 1}
+			tables := in.Tables
+			if tables == nil {
+				tables = old.Tables
+			}
+			if len(old.Tables) > 0 && !reflect.DeepEqual(tables, old.Tables) && !in.ReleaseKnowledgeRestrictions {
+				return nil, errors.New("解除或修改旧知识关联限制需要明确确认")
+			}
+			if in.ReleaseKnowledgeRestrictions {
+				tables = nil
+			}
+			saved = Knowledge{ID: in.ID, DatabaseID: in.DatabaseID, Name: in.Name, Description: text, Content: in.Content, Tables: tables, Published: in.Published, Revision: old.Revision + 1}
 			raw, e := json.Marshal(saved)
 			return []management.Record{{Key: key, Data: string(raw)}}, e
 		})

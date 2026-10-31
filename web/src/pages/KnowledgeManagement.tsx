@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Empty, Form, Input, Modal, Select, Space, Spin, Switch, Tag, message } from 'antd';
+import { Alert, Button, Card, Empty, Form, Input, Modal, Space, Spin, Switch, Tag, message } from 'antd';
 import { managementCall, type Database, type Knowledge } from '../api';
 import { CodeEditor } from '../components/CodeEditor';
 import { useI18n } from '../ui/preferences';
@@ -17,16 +17,17 @@ export function KnowledgePage({ db }: { db: Database }) {
  const [search, setSearch] = useState('');
  const [loading, setLoading] = useState(true);
  const [saving, setSaving] = useState(false);
+ const [releaseRestrictions, setReleaseRestrictions] = useState(false);
  const [preview, setPreview] = useState(false);
  const [error, setError] = useState('');
  const [form] = Form.useForm<Fields>();
  const sequence = useRef(0);
  const listRef = useRef<HTMLUListElement>(null);
- const dirty = !!draft && (creating || !selected || JSON.stringify(fieldsOf(draft)) !== JSON.stringify(fieldsOf(selected)));
+ const dirty = !!draft && (releaseRestrictions || creating || !selected || JSON.stringify(fieldsOf(draft)) !== JSON.stringify(fieldsOf(selected)));
  const locked = loading || saving;
  const canWrite = !!db.permissions?.includes('knowledge.write');
  const edit = (item?: Knowledge, isNew = false) => {
-  setSelected(isNew ? undefined : item); setCreating(isNew); setDraft(item ? fieldsOf(item) : undefined); setPreview(false); setError('');
+  setReleaseRestrictions(false); setSelected(isNew ? undefined : item); setCreating(isNew); setDraft(item ? fieldsOf(item) : undefined); setPreview(false); setError('');
   form.resetFields(); if (item) form.setFieldsValue(fieldsOf(item));
  };
  const reload = async (id?: string) => {
@@ -63,7 +64,7 @@ export function KnowledgePage({ db }: { db: Database }) {
  const save = async () => {
   try {
    const values = await form.validateFields(); setSaving(true); setError('');
-   const full = await managementCall<Knowledge>('save_knowledge', { ...values, database_id: db.id, revision: selected?.revision || 0 });
+   const full = await managementCall<Knowledge>('save_knowledge', { ...values, tables: undefined, release_knowledge_restrictions: releaseRestrictions, database_id: db.id, revision: selected?.revision || 0 });
    setItems(old => old.some(item => item.id === full.id) ? old.map(item => item.id === full.id ? full : item) : [...old, full]); edit(full);
    if (!`${full.id} ${full.name} ${full.description}`.toLowerCase().includes(search.toLowerCase())) setSearch('');
    message.success(t('知识已保存'));
@@ -88,13 +89,14 @@ export function KnowledgePage({ db }: { db: Database }) {
    <Button size="small" type="primary" loading={saving} disabled={!canWrite || !dirty || loading} onClick={() => void save()}>{t('保存知识')}</Button>
   </Space>}>
    {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}
-   {draft ? <Form form={form} layout="vertical" disabled={!canWrite || locked} onValuesChange={(_, values) => setDraft(values)}>
+   {draft ? <Form form={form} layout="vertical" disabled={!canWrite || locked} onValuesChange={(_, values) => setDraft({ ...values, tables: selected?.tables || [] })}>
     <div className="knowledge-fields-grid">
      <Form.Item name="id" label={t('知识 ID')} rules={[{ required: true, pattern: /^[^/]+$/ }]}><Input disabled={!!selected?.revision} /></Form.Item>
      <Form.Item name="name" label={t('名称')} rules={[{ required: true }]}><Input /></Form.Item>
      <Form.Item name="description" label={t('描述')} tooltip={t('作为知识列表和搜索结果的描述发送给模型，可填写用途、适用问题和主要内容。')} rules={[{ required: true }]}><Input.TextArea rows={3} aria-label={t('知识描述')} /></Form.Item>
      <div>
-      <Form.Item name="tables" label={t('关联表')} tooltip={t('关联表用于知识访问过滤。')}><Select mode="tags" tokenSeparators={[',', ' ']} options={db.config?.tables.map(table => ({ value: table.table, label: table.table }))} /></Form.Item>
+      {!!selected?.tables?.length && <Alert type={releaseRestrictions ? 'warning' : 'info'} showIcon title={t(releaseRestrictions ? '保存后解除旧关联限制' : '保留旧关联限制')} description={<>{selected.tables.join(', ')}<p>{t('旧记录仍按这些表的开放范围过滤；普通保存保留限制。解除后，本库有知识读取权限的用户可读取已发布正文。')}</p><Button size="small" disabled={!canWrite || locked} onClick={() => releaseRestrictions ? setReleaseRestrictions(false) : Modal.confirm({ title: t('解除旧关联限制？'), content: t('解除后，本库有知识读取权限的用户可读取已发布正文。保存知识后生效。'), onOk: () => setReleaseRestrictions(true) })}>{t(releaseRestrictions ? '保留限制' : '解除旧关联限制')}</Button></>} />}
+
       <Form.Item name="published" label={t('发布')} valuePropName="checked" tooltip={t('发布后才可在知识工作台和业务 MCP 中查询。')}><Switch /></Form.Item>
      </div>
     </div>

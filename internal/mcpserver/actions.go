@@ -19,9 +19,10 @@ func (h handlers) listActions(ctx context.Context, _ *mcp.CallToolRequest, _ str
 }
 
 type invokeActionInput struct {
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments"`
-	RequestID string         `json:"request_id"`
+	Name       string         `json:"name"`
+	Arguments  map[string]any `json:"arguments"`
+	RequestID  string         `json:"request_id"`
+	ResultOnly bool           `json:"result_only,omitempty" jsonschema:"只查询同一 request_id 的回执，绝不执行或重试写入；确认后或网络故障后使用此选项，MCP 重启清空回执"`
 }
 
 func (h handlers) describeAction(ctx context.Context, _ *mcp.CallToolRequest, in describeActionInput) (*mcp.CallToolResult, any, error) {
@@ -37,6 +38,10 @@ func (h handlers) describeAction(ctx context.Context, _ *mcp.CallToolRequest, in
 func (h handlers) invokeAction(ctx context.Context, _ *mcp.CallToolRequest, in invokeActionInput) (*mcp.CallToolResult, any, error) {
 	if h.opts.Application == nil {
 		return nil, nil, fmt.Errorf("action 服务未配置")
+	}
+	if in.ResultOnly {
+		out, e := h.opts.Application.ActionResult(ctx, h.opts.DatabaseID, in.Name, in.RequestID)
+		return nil, out, e
 	}
 	out, e := h.opts.Application.InvokeAction(ctx, h.opts.DatabaseID, in.Name, in.RequestID, in.Arguments)
 	return nil, out, e

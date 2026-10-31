@@ -18,10 +18,11 @@ import (
 )
 
 type CloneScope struct {
-	Tables    bool `json:"tables"`
-	Policies  bool `json:"policies"`
-	Actions   bool `json:"actions"`
-	Knowledge bool `json:"knowledge"`
+	Tables         bool `json:"tables"`
+	Policies       bool `json:"policies"`
+	Actions        bool `json:"actions"`
+	Knowledge      bool `json:"knowledge"`
+	Authentication bool `json:"authentication"`
 }
 
 type CloneRequest struct {
@@ -104,6 +105,33 @@ func (c *Catalog) CloneConfiguration(ctx context.Context, targetID string, req C
 		}
 		preview = &ClonePreview{SourceDatabaseID: source.ID, SourceName: source.Name, TargetDatabaseID: target.ID, TargetName: target.Name, SourceRevision: source.Revision, TargetRevision: target.Revision, SourceToken: src.Token, TargetToken: dst.Token, Scope: scope, Items: []CloneItem{}, Issues: []string{}, Warnings: []string{"仅检查可确定的结构与静态引用，不能证明任意 JavaScript / SQL 的业务兼容性；请在目标库验证 Action 行为。"}}
 		next, records := buildClone(&source, &target, src.Knowledge, dst.Knowledge, actual, scope, preview)
+		if scope.Authentication {
+			if source.Authentication == nil {
+				source.Authentication = &Authentication{Type: "local"}
+			}
+			directory := false
+			if target.Authentication != nil {
+				directory = target.Authentication.EmployeeDirectory
+			}
+			raw, _ := json.Marshal(source.Authentication)
+			next.Authentication = &Authentication{}
+			_ = json.Unmarshal(raw, next.Authentication)
+			// Resolve inherited global policies, but keep target grants and default identity.
+			policy := src.Authentication.Policy
+			policy.Permissions = dst.Authentication.Policy.Permissions
+			policy.BusinessUserID = dst.Authentication.Policy.BusinessUserID
+			next.Authentication.Access = &policy
+			next.Authentication.EmployeeDirectory = directory
+			if err := next.ValidateAuthentication(); err != nil {
+				preview.Issues = append(preview.Issues, err.Error())
+			}
+			if err := c.Management.ValidateDatabaseAuth(ctx, next.Authentication.Connection()); err != nil {
+				preview.Issues = append(preview.Issues, err.Error())
+			}
+			next.AuthenticationRevision = target.AuthenticationRevision + 1
+			preview.Items = append(preview.Items, CloneItem{"authentication", 1, 1, []string{src.Authentication.Policy.Mode, next.Authentication.Source, src.Authentication.Provider.Name}})
+			preview.Warnings = append(preview.Warnings, "复制认证方式与提供方连接，保留目标库业务能力、默认身份、账号和人员授权；旧业务令牌及待确认预览失效。密钥环境变量仅复制引用。")
+		}
 		if next.Config != nil {
 			if err := next.Config.Validate(); err != nil {
 				preview.Issues = append(preview.Issues, err.Error())
@@ -153,7 +181,7 @@ func (c *Catalog) CloneConfiguration(ctx context.Context, targetID string, req C
 		}
 		next.Revision++
 		raw, err = json.Marshal(next)
-		return management.CloneReplacement{Database: raw, Knowledge: records}, err
+		return management.CloneReplacement{Database: raw, Knowledge: records, Authentication: scope.Authentication}, err
 	})
 	return preview, err
 }
@@ -374,7 +402,7 @@ type cloneKnowledge struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
 	Content     string   `json:"content"`
-	Tables      []string `json:"tables"`
+	Tables      []string `json:"tables,omitempty"`
 	Published   bool     `json:"published"`
 	Revision    int      `json:"revision"`
 }

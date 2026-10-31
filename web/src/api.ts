@@ -283,11 +283,11 @@ export const api = {
     throw e;
   })),
   policies: () => request<PoliciesResponse>('/api/policies'),
-  rawQuery: (sql: string, maxRows: number) => post<QueryResult>('/api/query', { sql, max_rows: maxRows }),
-  rewrite: (sql: string, userId: number, maxRows: number) =>
-    post<RewriteResult>('/api/rewrite', { sql, user_id: userId, max_rows: maxRows }),
-  previewRewrite: (sql: string, userId: number) =>
-    post<RewritePreview>('/api/rewrite', { sql, user_id: userId, preview_only: true }),
+  rawQuery: (sql: string, maxRows: number, parameters: Record<string, unknown> = {}) => post<QueryResult>('/api/query', { sql, max_rows: maxRows, parameters }),
+  rewrite: (sql: string, userId: number, maxRows: number, parameters: Record<string, unknown> = {}) =>
+    post<RewriteResult>('/api/rewrite', { sql, user_id: userId, max_rows: maxRows, parameters }),
+  previewRewrite: (sql: string, userId: number, parameters: Record<string, unknown> = {}) =>
+    post<RewritePreview>('/api/rewrite', { sql, user_id: userId, preview_only: true, parameters }),
   mcpInfo: () => request<ServerInfo>('/api/mcp/info'),
   mcpCall: (name: string, args: Record<string, unknown>, _userId: number) =>
     post<CallResult>('/api/mcp/call', { name, arguments: args }),
@@ -297,7 +297,7 @@ export const api = {
 export interface KnowledgePrompt {name:string;title:string;description:string}
 export interface KnowledgePrompts {prompts:KnowledgePrompt[];nextCursor?:string}
 export interface KnowledgePromptResult {description:string;messages:{role:string;content:{type:string;text:string}}[]}
-export interface Knowledge {id:string;database_id:string;name:string;description:string;content?:string;tables:string[];published:boolean;revision:number}
+export interface Knowledge {id:string;database_id:string;name:string;description:string;content?:string;tables?:string[];published:boolean;revision:number}
 
 export interface AuditEvent {id:string;request_id:string;actor_id:number;subject_id:number;database_id:string;source:string;tool:string;kind:string;status:string;original_sql?:string;rewritten_sql?:string;executed_sql?:string;binds?:unknown;error?:string;started_at:string;finished_at?:string;rows:number;truncated:boolean;detail?:unknown;policy_version:number}
 export interface AuditFilters {database_id?:string;platform_only?:boolean;request_id?:string;actor_id?:number;kind?:string;source?:string;status?:string;tool?:string;query?:string;started_from?:string;started_to?:string}
