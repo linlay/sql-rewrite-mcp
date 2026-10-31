@@ -1,6 +1,7 @@
 package platform_test
 
 import (
+	"datascope-server/internal/management"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -50,10 +51,10 @@ func TestKnowledgeDescriptionDisclosureAndLegacyAlias(t *testing.T) {
 	if value.(application.Knowledge).Description != "" {
 		t.Fatal("empty description did not override summary")
 	}
-	// Directly inserted pre-migration JSON is readable and searched without waiting for restart.
-	source, e := f.m.Source(f.ctx, "default")
-	must(t, e)
-	_, e = source.DB.Exec(`INSERT INTO KNOWLEDGE VALUES('default/legacy','{"id":"legacy","database_id":"default","name":"Legacy","summary":"LegacyDescriptionToken\n第二行","content":"Old body","tables":[],"published":true,"revision":4}')`)
+	// Legacy input is canonicalized before publication; searches use the same YAML.
+	e := f.m.UpdateRecords(f.ctx, "knowledge", "knowledge.save", "default", func(records []management.Record) ([]management.Record, error) {
+		return append(records, management.Record{Key: "default/legacy", Data: `{"id":"legacy","database_id":"default","name":"Legacy","summary":"LegacyDescriptionToken\n第二行","content":"Old body","tables":[],"published":true,"revision":4}`}), nil
+	})
 	must(t, e)
 	value, err = f.app.Call(f.readerContext(), "search_knowledge", application.Input{DatabaseID: "default", Query: "LegacyDescriptionToken"})
 	must(t, err)

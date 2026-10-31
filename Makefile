@@ -59,6 +59,6 @@ init-shop:
 install-demo-actions:
 	$(LOAD_ENV) $(GO_ENV) go run ./cmd/install-demo-actions
 
-# 保留旧文件，将全局与逐库状态迁移到新的 .db 文件。
+# 停止 API/MCP 后执行；备份逐库 management.db 并迁移至分目录 YAML。
 migrate-state:
 	$(GO_ENV) go run ./cmd/migrate-state

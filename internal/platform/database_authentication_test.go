@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -158,9 +159,10 @@ func TestDatabaseAuthenticationSelectionAndAccountTokens(t *testing.T) {
 	}
 	source, err := f.m.Source(f.ctx, "default")
 	must(t, err)
-	var stored string
-	must(t, source.DB.QueryRow("SELECT DATA_ FROM SOURCE_CONFIG WHERE ID_='default'").Scan(&stored))
-	if !strings.Contains(stored, `"access"`) {
+	bytes, err := os.ReadFile(filepath.Join(source.Path, "authentication.yml"))
+	must(t, err)
+	stored := string(bytes)
+	if !strings.Contains(stored, `ACCESS_`) {
 		t.Fatal("missing durable per-database policy")
 	}
 }

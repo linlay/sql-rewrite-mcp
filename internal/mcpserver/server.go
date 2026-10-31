@@ -31,14 +31,13 @@ const (
 
 // Options configures identity and debug tools.
 type Options struct {
-	Catalog       *catalog.Catalog
-	BusinessTools []catalog.BusinessTool
-	Application   *application.Service
-	Management    *management.Store
-	DatabaseID    string
-	AuthMode      string
-	Managed       bool
-	Tools         []string
+	Catalog     *catalog.Catalog
+	Application *application.Service
+	Management  *management.Store
+	DatabaseID  string
+	AuthMode    string
+	Managed     bool
+	Tools       []string
 	// IdentityStore is the shared trusted employee directory for all data sources.
 	IdentityStore *store.Store
 	// UserHeader carries the trusted user id, set by the gateway in front of

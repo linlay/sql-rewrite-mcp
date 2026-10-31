@@ -69,7 +69,6 @@ func ManagedHTTPHandler(c *catalog.Catalog, identity *store.Store, opts Options,
 		selected.IdentityStore = identity
 		selected.Tools = d.Tools
 		selected.DatabaseID = d.ID
-		selected.BusinessTools = d.BusinessTools
 		selected.Managed = true
 		endpoint := path
 		if segment != "" {

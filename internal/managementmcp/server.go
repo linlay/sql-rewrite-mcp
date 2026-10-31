@@ -52,6 +52,7 @@ var operations = map[string][]operation{
 		{"audit", "page", "get_audit_page", "", "database_id request_id actor_id platform_only kind source status tool query started_from started_to limit offset"},
 	},
 	"datascope_manage": {
+		{"database", "clone_configuration", "clone_configuration", "database_id clone", ""},
 		{"authentication", "save", "save_auth_config", "auth_config", ""},
 		{"action", "save", "configure_actions", "database_id database", "write_password"},
 		{"discovery", "refresh", "discover_database", "database_id", ""},
@@ -72,6 +73,7 @@ var operations = map[string][]operation{
 		{"knowledge", "save", "save_knowledge", "database_id id name description content tables published revision", "summary"},
 	},
 	"datascope_inspect": {
+		{"database", "preview_clone_configuration", "preview_clone_configuration", "database_id clone", ""},
 		{"action", "try", "try_action", "database_id name arguments request_id business_user_id", ""},
 		{"connection", "test", "test_database_connection", "database", "password"},
 		{"database", "test_connection", "test_connection", "database_id", ""},

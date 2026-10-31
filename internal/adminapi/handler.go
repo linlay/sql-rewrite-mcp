@@ -144,7 +144,6 @@ func (a apiHandlers) policies(w http.ResponseWriter, r *http.Request) {
 		"path":      cfg.Path,
 		"schemes":   cfg.Schemes,
 		"variables": rewrite.Variables,
-		"fragments": cfg.Fragments,
 		"policies":  views,
 		"as_of":     a.svc.AsOf,
 	})

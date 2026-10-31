@@ -5,6 +5,7 @@ import { driverLabels } from '../components/ConnectionFields';
 import { useAuth } from '../Auth';
 import { useI18n } from '../ui/preferences';
 import { DatabaseAuthentication } from '../components/DatabaseAuthentication';
+import { DatabaseClone } from '../components/DatabaseClone';
 
 export function DatabaseSettings({ db, onSaved }: { db?: Database; onSaved: () => void }) {
  const t = useI18n();
@@ -27,6 +28,7 @@ export function DatabaseSettings({ db, onSaved }: { db?: Database; onSaved: () =
   {error && <Alert type="error" showIcon title={t('操作失败')} description={error} closable onClose={() => setError(undefined)} />}
   {db && can('config.read') && <>
    <Card title={t('基本信息')} extra={<Space wrap>
+    <DatabaseClone db={db} onSaved={onSaved} />
     <Button onClick={() => setDetailsOpen(true)}>{t('存储详情')}</Button>
     <Button loading={busy} onClick={() => void run(() => managementCall('test_connection', { database_id: db.id }), t('数据库连接正常'))}>{t('测试连接')}</Button>
     <Button type="primary" loading={busy} disabled={!can('config.write') || !name.trim() || name === db.name} onClick={() => void run(() => managementCall('update_database', { database_id: db.id, database: { id: db.id, revision: db.revision, name: name.trim() } }), t('数据库名称已保存'))}>{t('保存')}</Button>
@@ -50,7 +52,7 @@ export function DatabaseSettings({ db, onSaved }: { db?: Database; onSaved: () =
     <Descriptions column={1} items={[
      { key: 'id', label: t('数据库 ID'), children: <Typography.Text copyable>{db.id}</Typography.Text> },
      ...(db.driver === 'sqlite' ? [{ key: 'business', label: t('业务数据文件'), children: <Typography.Text copyable style={{ overflowWrap: 'anywhere' }}>{db.path}</Typography.Text> }] : []),
-     { key: 'management', label: t('业务管理库'), children: <Typography.Text copyable style={{ overflowWrap: 'anywhere' }}>{db.management_path}</Typography.Text> },
+     { key: 'management', label: t('业务管理配置（YAML）'), children: <Typography.Text copyable style={{ overflowWrap: 'anywhere' }}>{db.management_path}</Typography.Text> },
      { key: 'audit', label: t('审计库'), children: <Typography.Text copyable style={{ overflowWrap: 'anywhere' }}>{db.audit_path}</Typography.Text> },
     ]} />
    </Modal>

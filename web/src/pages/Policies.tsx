@@ -1,6 +1,6 @@
 import { useI18n } from '../ui/preferences';
 import { useEffect, useState } from 'react';
-import { Alert, Card, Col, Collapse, Descriptions, Row, Segmented, Space, Switch, Table, Tag, Typography } from 'antd';
+import { Alert, Card, Col, Descriptions, Row, Segmented, Space, Switch, Table, Tag, Typography } from 'antd';
 import { api, type PoliciesResponse, type PolicyView, type Scheme } from '../api';
 import { SchemeTag, SqlBlock } from '../components/shared';
 
@@ -21,7 +21,7 @@ function RuleDetail({ policy }: { policy: PolicyView }) {
           <SqlBlock sql={policy.deny_unless} format={false} />
         </>
       )}
-      <Text strong>{t("展开片段后的 SQL（绑定变量：")}{policy.params.map((p) => `:${p}`).join('、')}）</Text>
+      <Text strong>{t("编译后的 SQL（绑定变量：")}{policy.params.map((p) => `:${p}`).join('、')}）</Text>
       <SqlBlock sql={policy.compiled_sql ?? ''} />
     </Space>
   );
@@ -70,7 +70,7 @@ export function Policies() {
           </Col>
         ))}
       </Row>
-      <Card size="small" title={t("绑定变量与片段")}>
+      <Card size="small" title={t("绑定变量")}>
         <Descriptions
           size="small"
           column={1}
@@ -84,15 +84,6 @@ export function Policies() {
                 {v.name === 'asOf' && <Text type="secondary">{t("（当前")}{data.as_of}）</Text>}
               </>
             ),
-          }))}
-        />
-        <Collapse
-          size="small"
-          style={{ marginTop: 12 }}
-          items={Object.entries(data.fragments).map(([name, body]) => ({
-            key: name,
-            label: <Text code>{`{{${name}}}`}</Text>,
-            children: <SqlBlock sql={body} />,
           }))}
         />
       </Card>

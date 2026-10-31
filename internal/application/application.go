@@ -24,6 +24,7 @@ type Service struct {
 	SecureCookies    bool
 }
 type Input struct {
+	Clone          *catalog.CloneRequest          `json:"clone,omitempty"`
 	AuthConfig     *management.AuthConfig         `json:"auth_config,omitempty"`
 	Arguments      map[string]any                 `json:"arguments,omitempty"`
 	WritePassword  string                         `json:"write_password,omitempty"`
@@ -123,6 +124,8 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 	}
 	require := func(p string) error { return guard.Require(ctx, s.Management, in.DatabaseID, p) }
 	switch action {
+	case "preview_clone_configuration", "clone_configuration":
+		return s.CloneConfiguration(ctx, in, action == "clone_configuration")
 	case "list_knowledge_prompts":
 		return s.ListKnowledgePrompts(ctx, in)
 	case "get_knowledge_prompt":
@@ -141,8 +144,6 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 			return nil, e
 		}
 		return s.Management.AuthConfig(ctx)
-	case "configure_query_tools":
-		return nil, errors.New("命名查询功能已移除，请直接调用 query 编写 SELECT")
 	case "list_actions":
 		return s.InspectAction(ctx, in.DatabaseID, "")
 	case "describe_action":
@@ -448,7 +449,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 				return nil, e
 			}
 		}
-		if !reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) || old.MCPEnabled != in.Database.MCPEnabled || old.MCPPath != in.Database.MCPPath || !reflect.DeepEqual(old.Tools, in.Database.Tools) || !reflect.DeepEqual(old.BusinessTools, in.Database.BusinessTools) {
+		if !reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) || old.MCPEnabled != in.Database.MCPEnabled || old.MCPPath != in.Database.MCPPath || !reflect.DeepEqual(old.Tools, in.Database.Tools) {
 			if e := require("mcp.write"); e != nil {
 				return nil, e
 			}
@@ -456,7 +457,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if e := require("config.read"); e != nil {
 			return nil, e
 		}
-		if in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) && reflect.DeepEqual(old.BusinessTools, in.Database.BusinessTools) {
+		if in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) {
 			return s.DatabaseView(ctx, *old), nil
 		}
 		if e := s.Catalog.SaveWithWritePassword(ctx, *in.Database, in.WritePassword); e != nil {
@@ -695,7 +696,6 @@ func (s *Service) DatabaseView(ctx context.Context, d catalog.Database) Database
 		d.Path = ""
 		d.Connection = nil
 		d.Config = nil
-		d.BusinessTools = nil
 		d.Actions = nil
 		d.WriteConnection = nil
 		d.WriteEnabled = false
@@ -705,7 +705,9 @@ func (s *Service) DatabaseView(ctx context.Context, d catalog.Database) Database
 	if s.Management.Can(ctx, u.ID, d.ID, "config.read") {
 		if source, e := s.Management.Source(ctx, d.ID); e == nil {
 			view.ManagementPath = source.Path
-			view.AuditPath = source.Audit.Path
+			if source.Audit != nil {
+				view.AuditPath = source.Audit.Path
+			}
 		}
 		if access, e := s.Management.ResolveAuth(ctx, "DATABASE", d.ID); e == nil {
 			view.Access = &access

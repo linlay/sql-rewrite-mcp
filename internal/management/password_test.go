@@ -41,6 +41,9 @@ func TestPasswordMinimumLength(t *testing.T) {
 	if _, err = m.Authenticate(ctx, u.Username, "abcdef"); err != nil {
 		t.Fatal(err)
 	}
+	if err = m.UpdateRecords(ctx, "databases", "database.create", "test", func([]Record) ([]Record, error) { return []Record{{"test", `{"id":"test","revision":1}`}}, nil }); err != nil {
+		t.Fatal(err)
+	}
 	a := BusinessAccount{DatabaseID: "test", Username: "reader", Name: "Reader", BusinessUserID: 1, Active: true, Permissions: []string{"query"}}
 	if _, err = m.SaveBusinessAccount(ctx, a, "12345", 0); err == nil {
 		t.Fatal("business account creation accepted five characters")

@@ -1,10 +1,10 @@
 # 业务管理配置下一阶段方案
 
-状态：SELECT/DML/Prompts 的职责划分、内存 Action 回执、移除查询模板与公共片段已实现。业务管理配置分目录 YAML 化及配置克隆仍待落地，当前管理存储仍使用 SQLite。
+状态：业务管理配置分目录 YAML、显式一次性迁移、配置克隆、SELECT/DML/Prompts 边界、内存 Action 回执与移除公共片段已落地。全局 management.db 和独立 audit.db 保持 SQLite。升级命令与验收见 [YAML 发布说明](management-yaml-release.md)，克隆操作见 [配置克隆](configuration-clone.md)。
 
 ## 存储与目录
 
-全局 `data/management.db` 继续使用 SQLite，维护平台用户、全局认证与数据源目录。业务数据库结构和数据保持原有规范。各业务库后续将可维护配置从 management.db 迁出，按下列目录组织 YAML：
+全局 `data/management.db` 继续使用 SQLite，维护平台用户、全局认证与数据源目录。业务数据库结构和数据保持原有规范。各业务库已将可维护配置从 management.db 迁出，按下列目录组织 YAML：
 
 ```text
 data/
@@ -25,9 +25,9 @@ data/
 
 字段遵循大写、下划线分隔且末尾带下划线，如 ID_、NAME_、DESCRIPTION_、CONTENT_、REVISION_。业务标识与参数名保持自身业务语义。SQL、JavaScript 和知识正文使用 YAML 多行文本。
 
-不设 template/、公共 SQL fragment、version/、state/ 或独立 prompts/ 目录。每张表保存完整权限 SQL，允许重复；旧片段引用在迁移时展开并保留参数绑定。SQL 直接编写并可绑定变量，绑定变量不构成独立查询模板需求。DML 通过 Action 执行，Action 内可以 SELECT 做校验。已有 business_tools 属于旧实现，不能作为本轮新增模板需求的依据，旧入口与 MCP 工具发布已退出，历史字段仅为旧配置兼容保留。
+不设 template/、公共 SQL fragment、version/、state/ 或独立 prompts/ 目录。每张表保存完整权限 SQL，允许重复；旧片段引用在迁移时展开并保留参数绑定。SQL 直接编写并可绑定变量，绑定变量不构成独立查询模板需求。DML 通过 Action 执行，Action 内可以 SELECT 做校验。BusinessTool/ToolParameter、business_tools 与公共片段字段已从运行时模型删除；旧格式解析仅存在于离线一次性迁移中，禁止运行时兼容。
 
-保留当前 REVISION_ 做并发保存检查，不生成历史版本目录。已登记结构放入对应表文件，派生索引和缓存在内存重建。账号密码保留哈希，连接密码保留加密方式，credentials.key 继续独立存放。迁移必须先备份、逐项校验并保留可恢复的原文件。
+保留当前 REVISION_ 做并发保存检查，不生成历史版本目录。已登记结构放入对应表文件，派生索引和缓存在内存重建。扫描候选、最近检查状态与本进程最近 20 次变化报告仅存内存，重启重新扫描；生命周期和分进程约定见 [运行时状态](runtime-state.md)。账号密码保留哈希，连接密码保留加密方式，credentials.key 继续独立存放。迁移必须先备份、逐项校验并保留可恢复的原文件。
 
 ## 知识复用 MCP Prompts
 
@@ -41,7 +41,7 @@ data/
 
 ## 配置克隆
 
-支持从源业务库克隆 management 配置到目标业务库：默认复制表与字段配置、查询权限、Action 和知识；认证设置作为明确可选项。目标库保留自己的连接、账号密码、管理授权、身份绑定、MCP 路由、审计和动作回执。
+支持从源业务库克隆 management 配置到目标业务库：默认复制表与字段配置、查询权限、Action 和知识，四项均可单独选择。当前认证设置保留目标原值。目标库保留自己的连接、账号密码、管理授权、身份绑定、MCP 路由、审计和动作回执。
 
 克隆前展示覆盖范围、检查源和目标配置版本及结构兼容性；整组保存必须保证一致性。知识 ID 可以保留，数据库归属使用目标 ID。配置克隆不等于复制业务数据或扩大账号授权。
 

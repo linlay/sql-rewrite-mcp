@@ -2,44 +2,44 @@ package management
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 )
 
+// Search is derived from the current YAML generation; no disk index is created.
 func (s *Store) SearchKnowledge(ctx context.Context, query string) (map[string]bool, error) {
-	terms := strings.Fields(query)
+	terms := strings.Fields(strings.ToLower(query))
 	if len(terms) > 20 {
 		terms = terms[:20]
 	}
 	if len(terms) == 0 {
 		return nil, nil
 	}
-	for i, t := range terms {
-		terms[i] = "\"" + strings.ReplaceAll(t, "\"", "\"\"") + "\""
-	}
-	expression := strings.Join(terms, " AND ")
-	out := map[string]bool{}
-	ids, e := s.sourceIDs()
+	records, e := s.Records(ctx, "knowledge")
 	if e != nil {
 		return nil, e
 	}
-	for _, id := range ids {
-		rows, e := s.sourceDB(id).QueryContext(ctx, "SELECT KEY_ FROM KNOWLEDGE_SEARCH WHERE KNOWLEDGE_SEARCH MATCH ? LIMIT 500", expression)
-		if e != nil {
+	out := map[string]bool{}
+	for _, r := range records {
+		var v struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Content     string `json:"content"`
+		}
+		if e = json.Unmarshal([]byte(r.Data), &v); e != nil {
 			return nil, e
 		}
-		for rows.Next() {
-			var key string
-			if e = rows.Scan(&key); e != nil {
-				rows.Close()
-				return nil, e
-			}
-			out[key] = true
+		text := strings.ToLower(v.Name + "\n" + v.Description + "\n" + v.Content)
+		match := true
+		for _, term := range terms {
+			match = match && strings.Contains(text, term)
 		}
-		if e = rows.Err(); e != nil {
-			rows.Close()
-			return nil, e
+		if match {
+			out[r.Key] = true
 		}
-		rows.Close()
+		if len(out) >= 500 {
+			break
+		}
 	}
 	return out, nil
 }

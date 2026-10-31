@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// BootstrapManaged imports file configuration exactly once; subsequent reads use SQLite exclusively.
+// BootstrapManaged imports file configuration exactly once; subsequent reads use split YAML exclusively.
 func BootstrapManaged(ctx context.Context, m *management.Store, path string, st *store.Store, config string, asOf time.Time, timeout time.Duration, legacy string) (*Catalog, error) {
 	c := &Catalog{Path: path, Management: m, Audit: m.Audit, AsOf: asOf, Timeout: timeout}
 	records, e := m.Records(ctx, "databases")
@@ -35,34 +35,10 @@ func BootstrapManaged(ctx context.Context, m *management.Store, path string, st 
 	})
 	return c, e
 }
-func (c *Catalog) listSQLite(ctx context.Context) ([]Database, error) {
+func (c *Catalog) listManaged(ctx context.Context) ([]Database, error) {
 	records, e := c.Management.Records(ctx, "databases")
 	if e != nil {
 		return nil, e
-	}
-	checks, e := c.Management.Records(ctx, "discovery_checks")
-	if e != nil {
-		return nil, e
-	}
-	statuses := map[string]discoveryCheck{}
-	for _, r := range checks {
-		var check discoveryCheck
-		if e := json.Unmarshal([]byte(r.Data), &check); e != nil {
-			return nil, e
-		}
-		statuses[r.Key] = check
-	}
-	pendingRecords, e := c.Management.Records(ctx, "discovery_pending")
-	if e != nil {
-		return nil, e
-	}
-	pending := map[string]*PendingDiscovery{}
-	for _, r := range pendingRecords {
-		var p *PendingDiscovery
-		if e := json.Unmarshal([]byte(r.Data), &p); e != nil {
-			return nil, e
-		}
-		pending[r.Key] = p
 	}
 	out := []Database{}
 	for _, r := range records {
@@ -70,28 +46,12 @@ func (c *Catalog) listSQLite(ctx context.Context) ([]Database, error) {
 		if e = json.Unmarshal([]byte(r.Data), &d); e != nil {
 			return nil, e
 		}
-		if d.Config != nil {
-			if e = d.Config.InlineFragments(); e != nil {
-				return nil, e
-			}
-		}
-		if check, ok := statuses[d.ID]; ok && (d.Discovery == nil || check.AttemptedAt.After(d.Discovery.AttemptedAt)) {
-			if d.Discovery == nil {
-				d.Discovery = &Discovery{}
-			}
-			d.Discovery.CheckedAt = check.CheckedAt
-			d.Discovery.AttemptedAt = check.AttemptedAt
-			d.Discovery.Error = check.Error
-		}
-		if p := pending[d.ID]; p != nil && d.Discovery != nil && p.BaseVersion == d.Discovery.Version {
-			p.Changes = schemaDiff(d.Discovery.Tables, p.Tables, d.Discovery.Annotations)
-			d.Discovery.Pending = p
-		}
 		out = append(out, d)
 	}
+	c.overlayDiscovery(out)
 	return out, nil
 }
-func (c *Catalog) updateSQLite(ctx context.Context, action, database string, fn func(*[]Database) error, credentials ...management.DatabaseCredential) error {
+func (c *Catalog) updateManaged(ctx context.Context, action, database string, fn func(*[]Database) error, credentials ...management.DatabaseCredential) error {
 	return c.Management.UpdateRecords(ctx, "databases", action, database, func(records []management.Record) ([]management.Record, error) {
 		items := []Database{}
 		for _, r := range records {

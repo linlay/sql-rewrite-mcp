@@ -16,14 +16,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Bind variables a template may use. Values come from the trusted server
+// Bind variables a permission policy may use. Values come from the trusted server
 // context and are passed as named parameters, never spliced into SQL text.
 const (
 	VarUserID = "userId"
 	VarAsOf   = "asOf"
 )
 
-// Variables documents every bind variable available to templates.
+// Variables documents every bind variable available to permission policies.
 var Variables = []VariableInfo{
 	{Name: VarUserID, Description: "当前员工内部编号，来自 OAuth 工号映射或可信网关"},
 	{Name: VarAsOf, Description: "授权过期判断的参考时间（RFC 3339 字符串）"},
@@ -64,7 +64,7 @@ type Policy struct {
 	DenyUnless  string `yaml:"deny_unless" json:"deny_unless,omitempty"`
 	DenyMessage string `yaml:"deny_message" json:"deny_message,omitempty"`
 
-	// Compiled forms, with fragments expanded and ${var} turned into :var.
+	// Compiled forms, with ${var} turned into :var; held only in memory.
 	CompiledSQL   string   `yaml:"-" json:"compiled_sql,omitempty"`
 	CompiledGuard string   `yaml:"-" json:"compiled_deny_unless,omitempty"`
 	Params        []string `yaml:"-" json:"params"`
@@ -74,11 +74,10 @@ type Policy struct {
 
 // Config is a loaded and validated rewrite configuration.
 type Config struct {
-	Version   int               `yaml:"version" json:"version"`
-	Schemes   []SchemeInfo      `yaml:"schemes" json:"schemes"`
-	Fragments map[string]string `yaml:"fragments" json:"fragments"`
-	Tables    []*Policy         `yaml:"tables" json:"tables"`
-	Path      string            `yaml:"-" json:"path"`
+	Version int          `yaml:"version" json:"version"`
+	Schemes []SchemeInfo `yaml:"schemes" json:"schemes"`
+	Tables  []*Policy    `yaml:"tables" json:"tables"`
+	Path    string       `yaml:"-" json:"path"`
 
 	byTable map[string]*Policy
 }
@@ -128,14 +127,10 @@ func (c *Config) SchemeName(s Scheme) string {
 }
 
 var (
-	fragmentRef = regexp.MustCompile(`\{\{\s*([A-Za-z0-9_]+)\s*\}\}`)
 	variableRef = regexp.MustCompile(`\$\{\s*([A-Za-z0-9_]+)\s*\}`)
 )
 
 func (c *Config) compile() error {
-	if err := c.InlineFragments(); err != nil {
-		return err
-	}
 	if c.Version != 1 {
 		return fmt.Errorf("不支持的配置版本 %d", c.Version)
 	}
@@ -168,35 +163,6 @@ func (c *Config) compile() error {
 	return errors.Join(errs...)
 }
 
-// InlineFragments accepts old configurations once and returns self-contained
-// per-table SQL, retaining ${identity} bindings. Public fragment editing is gone.
-func (c *Config) InlineFragments() error {
-	type expanded struct{ sql, guard string }
-	values := make([]expanded, len(c.Tables))
-	for i, p := range c.Tables {
-		if p == nil {
-			continue
-		}
-		sql, err := c.expand(p.SQL, nil)
-		if err != nil {
-			return err
-		}
-		guard, err := c.expand(p.DenyUnless, nil)
-		if err != nil {
-			return err
-		}
-		values[i] = expanded{sql, guard}
-	}
-	for i, p := range c.Tables {
-		if p != nil {
-			p.SQL = values[i].sql
-			p.DenyUnless = values[i].guard
-		}
-	}
-	c.Fragments = nil
-	return nil
-}
-
 func (c *Config) compilePolicy(pol *Policy, schemes map[Scheme]bool) error {
 	pol.CompiledSQL = ""
 	pol.CompiledGuard = ""
@@ -221,7 +187,7 @@ func (c *Config) compilePolicy(pol *Policy, schemes map[Scheme]bool) error {
 	if pol.Passthrough {
 		pol.Params = []string{}
 	} else {
-		text, params, err := c.template(pol.SQL)
+		text, params, err := bindVariables(pol.SQL)
 		if err != nil {
 			return fmt.Errorf("sql: %w", err)
 		}
@@ -249,7 +215,7 @@ func (c *Config) compilePolicy(pol *Policy, schemes map[Scheme]bool) error {
 		pol.CompiledSQL, pol.subquery = text, stmt
 	}
 	if strings.TrimSpace(pol.DenyUnless) != "" {
-		text, params, err := c.template(pol.DenyUnless)
+		text, params, err := bindVariables(pol.DenyUnless)
 		if err != nil {
 			return fmt.Errorf("deny_unless: %w", err)
 		}
@@ -269,15 +235,11 @@ func GuardQuery(expr string) string {
 	return "SELECT CASE WHEN (" + expr + ") THEN 1 ELSE 0 END"
 }
 
-// template expands {{fragments}} and turns ${var} into :var bind parameters.
-func (c *Config) template(text string) (string, []string, error) {
-	expanded, err := c.expand(text, nil)
-	if err != nil {
-		return "", nil, err
-	}
+// bindVariables turns ${var} into :var bind parameters.
+func bindVariables(text string) (string, []string, error) {
 	var params []string
 	var unknown []string
-	out := variableRef.ReplaceAllStringFunc(expanded, func(m string) string {
+	out := variableRef.ReplaceAllStringFunc(text, func(m string) string {
 		name := variableRef.FindStringSubmatch(m)[1]
 		if !slices.ContainsFunc(Variables, func(v VariableInfo) bool { return v.Name == name }) {
 			unknown = append(unknown, name)
@@ -294,29 +256,6 @@ func (c *Config) template(text string) (string, []string, error) {
 	}
 	slices.Sort(params)
 	return strings.TrimSpace(out), params, nil
-}
-
-func (c *Config) expand(text string, stack []string) (string, error) {
-	var err error
-	out := fragmentRef.ReplaceAllStringFunc(text, func(m string) string {
-		if err != nil {
-			return m
-		}
-		name := fragmentRef.FindStringSubmatch(m)[1]
-		body, ok := c.Fragments[name]
-		switch {
-		case !ok:
-			err = fmt.Errorf("未定义的片段 {{%s}}", name)
-		case slices.Contains(stack, name):
-			err = fmt.Errorf("片段循环引用：%s → %s", strings.Join(stack, " → "), name)
-		default:
-			var expanded string
-			expanded, err = c.expand(body, append(stack, name))
-			return expanded
-		}
-		return m
-	})
-	return out, err
 }
 
 // parseTemplate parses a configured SELECT and checks the invariants the

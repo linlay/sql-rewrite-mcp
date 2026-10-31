@@ -2,9 +2,12 @@ package platform_test
 
 import (
 	"encoding/json"
+	"gopkg.in/yaml.v3"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -103,8 +106,9 @@ func TestDatabaseOwnedAndGlobalAuthenticationSources(t *testing.T) {
 	}
 	src, err := f.m.Source(f.ctx, "default")
 	must(t, err)
-	var raw string
-	must(t, src.DB.QueryRow("SELECT DATA_ FROM SOURCE_CONFIG WHERE ID_='default'").Scan(&raw))
+	bytes, err := os.ReadFile(filepath.Join(src.Path, "authentication.yml"))
+	must(t, err)
+	raw := string(bytes)
 	if !strings.Contains(raw, private.URL) {
 		t.Fatal("private configuration is absent from source management")
 	}
@@ -218,7 +222,14 @@ func TestDatabaseOwnedAndGlobalAuthenticationSources(t *testing.T) {
 		t.Fatal("database editing changed global configuration")
 	}
 	// A corrupt or missing private provider fails closed, never uses a same-ID global provider.
-	_, err = src.DB.Exec("UPDATE SOURCE_CONFIG SET DATA_=json_remove(DATA_,'$.authentication.provider') WHERE ID_='default'")
+	rawAuth, err := os.ReadFile(filepath.Join(src.Path, "authentication.yml"))
+	must(t, err)
+	var authDoc map[string]any
+	must(t, yaml.Unmarshal(rawAuth, &authDoc))
+	delete(authDoc["AUTHENTICATION_"].(map[string]any), "PROVIDER_")
+	rawAuth, err = yaml.Marshal(authDoc)
+	must(t, err)
+	err = os.WriteFile(filepath.Join(src.Path, "authentication.yml"), rawAuth, 0600)
 	must(t, err)
 	res, err := http.Get(business.URL + "/.well-known/oauth-protected-resource/mcp/default")
 	must(t, err)

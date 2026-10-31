@@ -28,7 +28,7 @@ export function TablePolicyEditor({ db, policy, disabled, onChange, onOptionsOpe
   </div>
   <div className={`policy-sql-grid${!policy.passthrough && policy.deny_unless ? ' has-guard' : ''}`}>
    {!policy.passthrough && <div className="policy-sql-field">
-    <Space size={4}><Typography.Text>{t('行权限 SQL')}</Typography.Text><HelpTip label={t('行权限 SQL')}>{t('用 main.表名引用原表，${userId} 表示当前员工，${asOf} 表示授权时间。{{片段名称}} 可引用复用片段。')}</HelpTip></Space>
+    <Space size={4}><Typography.Text>{t('行权限 SQL')}</Typography.Text><HelpTip label={t('行权限 SQL')}>{t('用 main.表名引用原表，${userId} 表示当前员工，${asOf} 表示授权时间。每张表保存完整的权限 SQL。')}</HelpTip></Space>
     <CodeEditor language="sql" height="auto" minHeight="160px" wrap value={policy.sql} readOnly={disabled} onChange={sql => onChange({ sql })} />
    </div>}
    {!!policy.deny_unless && <div className="policy-sql-field">

@@ -1,6 +1,6 @@
 # 多数据库接入与 Linux 部署
 
-业务数据源可选择 SQLite、MySQL、PostgreSQL、Oracle、达梦 DM8。管理库、OAuth 状态和审计库仍使用 SQLite。网络数据源通过 Go `database/sql` 驱动接入，没有引入 ORM。
+业务数据源可选择 SQLite、MySQL、PostgreSQL、Oracle、达梦 DM8。全局管理、OAuth 客户端注册和独立审计继续使用 SQLite，逐库管理配置使用分目录 YAML。网络数据源通过 Go `database/sql` 驱动接入，没有引入 ORM。
 
 ## 平台与版本
 
@@ -50,7 +50,7 @@ MySQL 的 database 和 schema 填写相同值；PostgreSQL 分别指定 database
 {"driver":"oracle","connection":{"host":"10.0.0.23","port":1521,"service_name":"FREEPDB1","schema":"BUSINESS","username":"DATASCOPE_READER","password_env":"DATASCOPE_DB_ORACLE_PASSWORD"}}
 ```
 
-管理端默认直接输入数据库密码。测试连接只在内存中使用密码，不保存；接入成功后以 AES-256-GCM 加密存入当前业务管理库的 CONNECTION_CONFIG 表，与数据库配置同一事务提交。配置记录、版本、API/MCP 返回和审计只出现凭据引用，不包含明文密码或密文。API 与 MCP 读取相同逐库目录下的 `management.db` 和 `credentials.key`；密钥首次使用时自动生成，文件权限为 0600，无需手工配置密码环境变量。备份与迁移必须同时保存管理库及密钥文件，密钥缺失时禁止重新生成并覆盖旧凭据。
+管理端默认直接输入数据库密码。测试连接只在内存中使用密码；接入成功后用 AES-256-GCM 加密，保存在当前库 `management/database.yml` 的 `READ_PASSWORD_CIPHERTEXT_` 或 `WRITE_PASSWORD_CIPHERTEXT_`，与连接设置一起发布。API/MCP 与审计只出现凭据引用，不返回明文或密文。两个服务读取相同的 YAML 与独立 `credentials.key`，文件权限为 0600。备份必须同时保存 YAML 和密钥；已有密文但密钥缺失时，禁止重新生成密钥。
 
 仍兼容已有 `connection.password_env` 方式，例如 `.env` 中的 `DATASCOPE_DB_DAMENG_PASSWORD='实际密码'`，API 和 MCP 注入同名同值后使用；不能引用管理员密码等其他环境变量。直接密码放在创建请求顶层的 `password`，与 `connection.password_env` 二选一，不能把密码放入 connection。客户端可省略 id 和 port，服务端生成 ID 并补齐对应默认端口；已有手工 ID 继续兼容。
 
@@ -71,7 +71,7 @@ MySQL、PostgreSQL 默认启用证书与主机名校验；可信开发网络可�
 - MySQL 每个连接使用 ANSI_QUOTES 和 NO_BACKSLASH_ESCAPES，使字符串规则与内部解析一致。
 - PostgreSQL 固定 search_path 为 pg_catalog，业务表始终显式限定 schema。
 
-策略模板继续使用逻辑命名空间 `main.表名`，例如：
+权限 SQL 使用逻辑命名空间 `main.表名`，例如：
 
 ```sql
 SELECT * FROM main.orders WHERE owner_id = ${userId}

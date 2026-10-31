@@ -6,7 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -28,12 +28,13 @@ func (s *Store) credentialKey(id string, create bool) ([]byte, error) {
 	path := filepath.Join(filepath.Dir(source.Path), "credentials.key")
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) && create {
-		var count int
-		if err := source.DB.QueryRow("SELECT COUNT(*) FROM CONNECTION_CONFIG WHERE PASSWORD_CIPHERTEXT_ IS NOT NULL").Scan(&count); err != nil {
+		if err := source.withState(context.Background(), false, func(st *sourceState) error {
+			if len(st.Credentials) > 0 {
+				return errors.New("数据库凭据加密密钥缺失，请恢复密钥备份")
+			}
+			return nil
+		}); err != nil {
 			return nil, err
-		}
-		if count > 0 {
-			return nil, errors.New("数据库凭据加密密钥缺失，请恢复密钥备份")
 		}
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
@@ -102,14 +103,19 @@ func (s *Store) DatabasePassword(ctx context.Context, id string) (string, error)
 		return "", err
 	}
 	purpose := "READ"
-	if id != filepath.Base(filepath.Dir(source.Path)) {
+	if id != source.ID {
 		purpose = "WRITE"
 	}
 	var sealed []byte
-	if err := source.DB.QueryRowContext(ctx, "SELECT PASSWORD_CIPHERTEXT_ FROM CONNECTION_CONFIG WHERE PURPOSE_=?", purpose).Scan(&sealed); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", errors.New("数据库连接密码尚未保存")
+	if err := source.withState(ctx, false, func(st *sourceState) error {
+		raw := st.Credentials[purpose]
+		if raw == "" {
+			return errors.New("数据库连接密码尚未保存")
 		}
+		var e error
+		sealed, e = base64.StdEncoding.DecodeString(raw)
+		return e
+	}); err != nil {
 		return "", err
 	}
 	aead, err := s.credentialCipher(id, false)
@@ -161,4 +167,26 @@ func (s *Store) openLegacyCredential(id string, sealed []byte) (string, error) {
 	}
 	plain, e := gcm.Open(nil, sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():], []byte(id))
 	return string(plain), e
+}
+
+func verifyCiphertext(key []byte, id, encoded string) error {
+	sealed, e := base64.StdEncoding.DecodeString(encoded)
+	if e != nil {
+		return errors.New("连接密码密文格式无效")
+	}
+	block, e := aes.NewCipher(key)
+	if e != nil {
+		return e
+	}
+	gcm, e := cipher.NewGCM(block)
+	if e != nil {
+		return e
+	}
+	if len(sealed) < gcm.NonceSize() {
+		return errors.New("连接密码密文无效")
+	}
+	if _, e = gcm.Open(nil, sealed[:gcm.NonceSize()], sealed[gcm.NonceSize():], []byte(id)); e != nil {
+		return errors.New("连接密码解密校验失败")
+	}
+	return nil
 }

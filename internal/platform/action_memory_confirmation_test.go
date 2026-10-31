@@ -47,9 +47,5 @@ func TestActionConfirmationSharesMemoryAcrossServices(t *testing.T) {
 	if again.Status != "done" {
 		t.Fatal("MCP did not observe API confirmation", again)
 	}
-	var tables int
-	must(t, sourceDB(t, f, "default").QueryRow("SELECT COUNT(*) FROM sqlite_schema WHERE name='ACTION_RECEIPT'").Scan(&tables))
-	if tables != 0 {
-		t.Fatal("receipts persisted in SQLite")
-	}
+	assertNoBusinessSQLite(t, f, "default")
 }

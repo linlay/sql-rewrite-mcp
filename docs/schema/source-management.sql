@@ -1,3 +1,4 @@
+-- 历史迁移输入格式，升级后不再创建或使用；当前格式见 ../storage-auth-refactor.md。
 -- DataScope metadata schema; business schemas are independent.
 CREATE TABLE ACTION_DEFINITION(NAME_ TEXT PRIMARY KEY,TITLE_ TEXT NOT NULL,DESCRIPTION_ TEXT NOT NULL,CONFIRM_ INTEGER NOT NULL,PARAMETER_JSON_ TEXT NOT NULL,SCRIPT_ TEXT NOT NULL);
 

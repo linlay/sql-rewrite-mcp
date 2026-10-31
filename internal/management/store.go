@@ -11,7 +11,6 @@ import (
 	"datascope-server/internal/audit"
 	"datascope-server/internal/metaschema"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	_ "modernc.org/sqlite"
@@ -99,7 +98,7 @@ func Open(path string, a *audit.Store) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	_, e = db.Exec("CREATE TABLE IF NOT EXISTS PLATFORM_USER(ID_ INTEGER PRIMARY KEY,USERNAME_ TEXT NOT NULL UNIQUE,NAME_ TEXT NOT NULL,PASSWORD_HASH_ TEXT NOT NULL,ACTIVE_ INTEGER NOT NULL DEFAULT 1,SYSTEM_ADMIN_ INTEGER NOT NULL DEFAULT 0,AUTH_VERSION_ INTEGER NOT NULL DEFAULT 0);\n CREATE TABLE IF NOT EXISTS PLATFORM_SESSION(TOKEN_HASH_ TEXT PRIMARY KEY,USER_ID_ INTEGER NOT NULL REFERENCES PLATFORM_USER(ID_),EXPIRES_ INTEGER NOT NULL,RESOURCE_ TEXT NOT NULL);\n CREATE TABLE IF NOT EXISTS PLATFORM_PERMISSION(USER_ID_ INTEGER NOT NULL REFERENCES PLATFORM_USER(ID_),PERMISSION_ TEXT NOT NULL,PRIMARY KEY(USER_ID_,PERMISSION_));\n CREATE TABLE IF NOT EXISTS PLATFORM_GRANT(USER_ID_ INTEGER NOT NULL REFERENCES PLATFORM_USER(ID_),DATABASE_ID_ TEXT NOT NULL,PERMISSIONS_ TEXT NOT NULL,BUSINESS_USER_ID_ INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(USER_ID_,DATABASE_ID_));\n CREATE TABLE IF NOT EXISTS CONNECTION_SECRET(DATABASE_ID_ TEXT PRIMARY KEY,CIPHERTEXT_ BLOB NOT NULL);\n CREATE TABLE IF NOT EXISTS CONFIG_RECORD(BUCKET_ TEXT NOT NULL,KEY_ TEXT NOT NULL,DATA_ TEXT NOT NULL,PRIMARY KEY(BUCKET_,KEY_));\n CREATE TABLE IF NOT EXISTS CONFIG_VERSION(BUCKET_ TEXT NOT NULL,KEY_ TEXT NOT NULL,REVISION_ INTEGER NOT NULL,DATA_ TEXT NOT NULL,CREATED_AT_ TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(BUCKET_,KEY_,REVISION_));\n CREATE TABLE IF NOT EXISTS AUDIT_OUTBOX(ID_ TEXT PRIMARY KEY,DATA_ TEXT NOT NULL);\n CREATE TABLE IF NOT EXISTS SCHEMA_VERSION(VERSION_ INTEGER PRIMARY KEY,APPLIED_AT_ TEXT NOT NULL);\n INSERT OR IGNORE INTO SCHEMA_VERSION VALUES(1,CURRENT_TIMESTAMP);")
+	_, e = db.Exec("CREATE TABLE IF NOT EXISTS PLATFORM_USER(ID_ INTEGER PRIMARY KEY,USERNAME_ TEXT NOT NULL UNIQUE,NAME_ TEXT NOT NULL,PASSWORD_HASH_ TEXT NOT NULL,ACTIVE_ INTEGER NOT NULL DEFAULT 1,SYSTEM_ADMIN_ INTEGER NOT NULL DEFAULT 0,AUTH_VERSION_ INTEGER NOT NULL DEFAULT 0);\n CREATE TABLE IF NOT EXISTS PLATFORM_PERMISSION(USER_ID_ INTEGER NOT NULL REFERENCES PLATFORM_USER(ID_),PERMISSION_ TEXT NOT NULL,PRIMARY KEY(USER_ID_,PERMISSION_));\n CREATE TABLE IF NOT EXISTS SCHEMA_VERSION(VERSION_ INTEGER PRIMARY KEY,APPLIED_AT_ TEXT NOT NULL);\n INSERT OR IGNORE INTO SCHEMA_VERSION VALUES(1,CURRENT_TIMESTAMP);")
 	if e != nil {
 		db.Close()
 		return nil, e
@@ -168,12 +167,11 @@ func (s *Store) Change(ctx context.Context, action, database string, detail any,
 	if e = fn(tx); e != nil {
 		return e
 	}
-	ev := audit.Event{Metadata: audit.From(ctx), ID: audit.ID(), Kind: action, Status: "success", StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Detail: detail}
-	ev.DatabaseID = database
 	if e = tx.Commit(); e != nil {
 		return e
 	}
-	return s.Audit.Put(ctx, ev)
+	s.auditChange(ctx, s.Audit, database, action, detail)
+	return nil
 
 }
 func (s *Store) Flush(ctx context.Context) error {
@@ -386,33 +384,25 @@ func (s *Store) Can(ctx context.Context, id int64, database, permission string) 
 	return e == nil && slices.Contains(g.Permissions, permission)
 }
 func (s *Store) Grant(ctx context.Context, id int64, database string) (Grant, error) {
-	g := Grant{UserID: id, DatabaseID: database}
-	var raw string
-	e := s.sourceDB(database).QueryRowContext(ctx, "SELECT PERMISSIONS_,BUSINESS_USER_ID_ FROM PLATFORM_GRANT WHERE USER_ID_=? AND DATABASE_ID_=?", id, database).Scan(&raw, &g.BusinessUserID)
-	if e == nil {
-		e = json.Unmarshal([]byte(raw), &g.Permissions)
+	grants, e := s.Grants(ctx, database)
+	if e != nil {
+		return Grant{}, e
 	}
-	return g, e
+	for _, g := range grants {
+		if g.UserID == id {
+			return g, nil
+		}
+	}
+	return Grant{UserID: id, DatabaseID: database}, sql.ErrNoRows
 }
 func (s *Store) Grants(ctx context.Context, database string) ([]Grant, error) {
-	rows, e := s.sourceDB(database).QueryContext(ctx, "SELECT USER_ID_,PERMISSIONS_,BUSINESS_USER_ID_ FROM PLATFORM_GRANT WHERE DATABASE_ID_=? ORDER BY USER_ID_", database)
+	x, e := s.Source(ctx, database)
 	if e != nil {
 		return nil, e
 	}
-	defer rows.Close()
-	out := []Grant{}
-	for rows.Next() {
-		g := Grant{DatabaseID: database}
-		var raw string
-		if e = rows.Scan(&g.UserID, &raw, &g.BusinessUserID); e != nil {
-			return nil, e
-		}
-		if e = json.Unmarshal([]byte(raw), &g.Permissions); e != nil {
-			return nil, e
-		}
-		out = append(out, g)
-	}
-	return out, rows.Err()
+	var grants []Grant
+	e = x.withState(ctx, false, func(st *sourceState) error { grants = st.Grants; return nil })
+	return grants, e
 }
 func (s *Store) SaveGrant(ctx context.Context, actor int64, g Grant) error {
 	if !s.Can(ctx, actor, g.DatabaseID, "grant") {
@@ -448,10 +438,15 @@ func (s *Store) SaveGrant(ctx context.Context, actor int64, g Grant) error {
 	if g.BusinessUserID < 0 {
 		return errors.New("业务身份必须为非负编号")
 	}
-	raw, _ := json.Marshal(g.Permissions)
-	return s.sourceChange(ctx, g.DatabaseID, "database.grant", map[string]any{"before": old, "after": g}, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(ctx, "INSERT INTO PLATFORM_GRANT VALUES(?,?,?,?) ON CONFLICT(USER_ID_,DATABASE_ID_) DO UPDATE SET PERMISSIONS_=excluded.PERMISSIONS_,BUSINESS_USER_ID_=excluded.BUSINESS_USER_ID_", g.UserID, g.DatabaseID, string(raw), g.BusinessUserID)
-		return e
+	return s.sourceChange(ctx, g.DatabaseID, "database.grant", map[string]any{"before": old, "after": g}, func(st *sourceState) error {
+		for i, v := range st.Grants {
+			if v.UserID == g.UserID {
+				st.Grants[i] = g
+				return nil
+			}
+		}
+		st.Grants = append(st.Grants, g)
+		return nil
 	})
 }
 func (s *Store) BusinessID(ctx context.Context, id int64, database string) (int64, error) {
@@ -468,26 +463,6 @@ func (s *Store) Records(ctx context.Context, bucket string) ([]Record, error) {
 	return s.records(ctx, bucket)
 }
 
-type queryer interface {
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-}
-
-func readRecords(ctx context.Context, q queryer, bucket string) ([]Record, error) {
-	rows, e := q.QueryContext(ctx, "SELECT KEY_,DATA_ FROM CONFIG_RECORD WHERE BUCKET_=? ORDER BY KEY_", bucket)
-	if e != nil {
-		return nil, e
-	}
-	defer rows.Close()
-	out := []Record{}
-	for rows.Next() {
-		var r Record
-		if e = rows.Scan(&r.Key, &r.Data); e != nil {
-			return nil, e
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
-}
 func (s *Store) UpdateRecords(ctx context.Context, bucket, action, database string, fn func([]Record) ([]Record, error), credentials ...DatabaseCredential) error {
 	return s.updateRecords(ctx, bucket, action, database, fn, credentials...)
 }

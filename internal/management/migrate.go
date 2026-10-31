@@ -4,27 +4,35 @@ import (
 	"context"
 	"database/sql"
 	"datascope-server/internal/audit"
-	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 )
 
 func (s *Store) initSources() error {
-	_, e := s.DB.Exec(`CREATE TABLE IF NOT EXISTS OAUTH_CLIENT(ID_ TEXT PRIMARY KEY,DATA_ TEXT NOT NULL);CREATE TABLE IF NOT EXISTS SOURCE_REGISTRY(DATABASE_ID_ TEXT PRIMARY KEY,NAME_ TEXT NOT NULL,MCP_PATH_ TEXT NOT NULL UNIQUE,STATE_ TEXT NOT NULL DEFAULT 'ACTIVE');`)
-	if e != nil {
+	if _, e := s.DB.Exec(`CREATE TABLE IF NOT EXISTS OAUTH_CLIENT(ID_ TEXT PRIMARY KEY,DATA_ TEXT NOT NULL);CREATE TABLE IF NOT EXISTS SOURCE_REGISTRY(DATABASE_ID_ TEXT PRIMARY KEY,NAME_ TEXT NOT NULL,MCP_PATH_ TEXT NOT NULL UNIQUE,STATE_ TEXT NOT NULL DEFAULT 'ACTIVE');`); e != nil {
 		return e
 	}
 	var n int
-	if e = s.DB.QueryRow("SELECT COUNT(*) FROM CONFIG_RECORD WHERE BUCKET_='databases'").Scan(&n); e != nil {
+	if e := s.DB.QueryRow("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name='CONFIG_RECORD'").Scan(&n); e != nil {
 		return e
 	}
 	if n > 0 {
-		if e = s.migrateSources(); e != nil {
+		if e := s.DB.QueryRow("SELECT COUNT(*) FROM CONFIG_RECORD WHERE BUCKET_='databases'").Scan(&n); e != nil {
+			return e
+		}
+	}
+	if n > 0 {
+		return fmt.Errorf("请先使用上一版 migrate-state 将旧全局业务配置拆为逐库 management.db，再执行本版 migrate-state")
+	}
+	ids, e := s.sourceIDs()
+	if e != nil {
+		return e
+	}
+	for _, id := range ids {
+		if _, e = s.Source(context.Background(), id); e != nil {
 			return e
 		}
 	}
@@ -43,148 +51,13 @@ func (s *Store) initSources() error {
 		}
 		s.Audit.Sources = func() []*audit.Store {
 			ids, _ := s.sourceIDs()
-			list := []*audit.Store{}
+			out := []*audit.Store{}
 			for _, id := range ids {
 				if x, e := s.Source(context.Background(), id); e == nil {
-					list = append(list, x.Audit)
+					out = append(out, x.Audit)
 				}
 			}
-			return list
-		}
-	}
-	return nil
-}
-func (s *Store) migrateSources() error {
-	ctx := context.Background()
-	records, e := readRecords(ctx, s.DB, "databases")
-	if e != nil {
-		return e
-	}
-	for _, r := range records {
-		var d map[string]any
-		if e = json.Unmarshal([]byte(r.Data), &d); e != nil {
-			return e
-		}
-		x, e := s.source(ctx, r.Key, true)
-		if e != nil {
-			return e
-		}
-		if e = x.saveState(ctx, r.Key, d, nil, false); e != nil {
-			return e
-		}
-		route, _ := d["mcp_path"].(string)
-		if route == "" {
-			route = r.Key
-		}
-		if _, e = s.DB.Exec("INSERT OR REPLACE INTO SOURCE_REGISTRY VALUES(?,?,?,'ACTIVE')", r.Key, d["name"], route); e != nil {
-			return e
-		}
-		for _, table := range []string{"PLATFORM_GRANT", "BUSINESS_ACCOUNT"} {
-			var exists int
-			if e = s.DB.QueryRow("SELECT COUNT(*) FROM sqlite_schema WHERE name=?", table).Scan(&exists); e != nil {
-				return e
-			}
-			if exists == 0 {
-				continue
-			}
-			rows, e := s.DB.Query("SELECT * FROM "+table+" WHERE DATABASE_ID_=?", r.Key)
-			if e != nil {
-				return e
-			}
-			cols, _ := rows.Columns()
-			for rows.Next() {
-				v := make([]any, len(cols))
-				p := make([]any, len(cols))
-				for i := range v {
-					p[i] = &v[i]
-				}
-				if e = rows.Scan(p...); e != nil {
-					rows.Close()
-					return e
-				}
-				q := "INSERT OR REPLACE INTO " + table + " VALUES("
-				for i := range v {
-					if i > 0 {
-						q += ","
-					}
-					q += "?"
-				}
-				q += ")"
-				if _, e = x.DB.Exec(q, v...); e != nil {
-					rows.Close()
-					return e
-				}
-			}
-			if e = rows.Err(); e != nil {
-				rows.Close()
-				return e
-			}
-			rows.Close()
-		}
-		for _, bucket := range []string{"knowledge", "discovery_checks", "discovery_pending"} {
-			rs, e := readRecords(ctx, s.DB, bucket)
-			if e != nil {
-				return e
-			}
-			for _, v := range rs {
-				if v.Key != r.Key && !strings.HasPrefix(v.Key, r.Key+"/") {
-					continue
-				}
-				if bucket == "knowledge" {
-					data, err := canonicalKnowledgeJSON(v.Data)
-					if err != nil {
-						return err
-					}
-					_, e = x.DB.Exec("INSERT OR REPLACE INTO KNOWLEDGE VALUES(?,?)", v.Key, data)
-				} else {
-					_, e = x.DB.Exec("INSERT OR REPLACE INTO CONFIG_RECORD VALUES(?,?,?)", bucket, v.Key, v.Data)
-				}
-				if e != nil {
-					return e
-				}
-			}
-		}
-		versions, e := s.DB.Query("SELECT BUCKET_,KEY_,REVISION_,DATA_,CREATED_AT_ FROM CONFIG_VERSION WHERE KEY_=? OR KEY_ LIKE ?", r.Key, r.Key+"/%")
-		if e != nil {
-			return e
-		}
-		for versions.Next() {
-			var b, k, data, at string
-			var rev int
-			versions.Scan(&b, &k, &rev, &data, &at)
-			if _, e = x.DB.Exec("INSERT OR IGNORE INTO CONFIG_VERSION VALUES(?,?,?,?,?)", b, k, rev, data, at); e != nil {
-				versions.Close()
-				return e
-			}
-		}
-		versions.Close()
-		for _, key := range []string{r.Key, WriteCredentialID(r.Key)} {
-			var encrypted []byte
-			if e = s.DB.QueryRow("SELECT CIPHERTEXT_ FROM CONNECTION_SECRET WHERE DATABASE_ID_=?", key).Scan(&encrypted); e == sql.ErrNoRows {
-				continue
-			} else if e != nil {
-				return e
-			}
-			plain, e := s.openLegacyCredential(key, encrypted)
-			if e != nil {
-				return e
-			}
-			sealed, e := s.SealDatabaseCredential(key, plain)
-			if e != nil {
-				return e
-			}
-			purpose := "READ"
-			if key != r.Key {
-				purpose = "WRITE"
-			}
-			if _, e = x.DB.Exec("UPDATE CONNECTION_CONFIG SET PASSWORD_CIPHERTEXT_=? WHERE PURPOSE_=?", sealed.Ciphertext, purpose); e != nil {
-				return e
-			}
-		}
-		if s.Audit != nil {
-			if e = s.Audit.MoveSource(r.Key, x.Audit); e != nil {
-				slog.Warn("legacy audit migration deferred; original audit retained", "error", e)
-			}
+			return out
 		}
 	}
 	return nil

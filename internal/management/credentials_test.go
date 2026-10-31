@@ -3,6 +3,7 @@ package management
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -47,24 +48,26 @@ func TestDatabaseCredentialsAreSealedAndShareable(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatal("key permissions are not private")
 	}
-	for _, query := range []string{"SELECT DATA_ FROM SOURCE_CONFIG", "SELECT DATA_ FROM CONFIG_VERSION"} {
-		rows, err := m.sourceDB("source").Query(query)
-		if err != nil {
-			t.Fatal(err)
+	x, err := m.Source(ctx, "source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = filepath.WalkDir(x.Path, func(path string, d os.DirEntry, e error) error {
+		if e != nil {
+			return e
 		}
-		for rows.Next() {
-			var raw string
-			if err = rows.Scan(&raw); err != nil {
-				t.Fatal(err)
+		if !d.IsDir() {
+			b, e := os.ReadFile(path)
+			if e != nil {
+				return e
 			}
-			if strings.Contains(raw, password) {
-				t.Fatal("password leaked into metadata or audit")
+			if bytes.Contains(b, []byte(password)) {
+				t.Fatal("password leaked into YAML")
 			}
 		}
-		if err = rows.Err(); err != nil {
-			t.Fatal(err)
-		}
-		rows.Close()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 	raw, err := json.Marshal(sealed)
 	if err != nil || bytes.Contains(raw, sealed.Ciphertext) || strings.Contains(string(raw), password) {
@@ -74,7 +77,14 @@ func TestDatabaseCredentialsAreSealedAndShareable(t *testing.T) {
 	if _, err = m.SealDatabaseCredential("other", "other-password"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = m.sourceDB("other").Exec("INSERT INTO CONNECTION_CONFIG(PURPOSE_,PASSWORD_CIPHERTEXT_) VALUES('READ',?)", sealed.Ciphertext); err != nil {
+	otherSource, err := m.source(ctx, "other", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = otherSource.withState(ctx, true, func(st *sourceState) error {
+		st.Credentials["READ"] = base64.StdEncoding.EncodeToString(sealed.Ciphertext)
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = other.DatabasePassword(ctx, "other"); err == nil {
@@ -82,7 +92,10 @@ func TestDatabaseCredentialsAreSealedAndShareable(t *testing.T) {
 	}
 	broken := append([]byte(nil), sealed.Ciphertext...)
 	broken[len(broken)-1] ^= 1
-	if _, err = m.sourceDB("source").Exec("UPDATE CONNECTION_CONFIG SET PASSWORD_CIPHERTEXT_=? WHERE PURPOSE_='READ'", broken); err != nil {
+	if err = x.withState(ctx, true, func(st *sourceState) error {
+		st.Credentials["READ"] = base64.StdEncoding.EncodeToString(broken)
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = other.DatabasePassword(ctx, "source"); err == nil {
@@ -128,8 +141,12 @@ func TestCredentialCreationIsAtomicAndKeyPublicationIsConcurrent(t *testing.T) {
 	if err == nil {
 		t.Fatal("failed registration succeeded")
 	}
-	var count int
-	if err = m.sourceDB("source").QueryRow("SELECT COUNT(*) FROM CONNECTION_CONFIG WHERE PASSWORD_CIPHERTEXT_ IS NOT NULL").Scan(&count); err != nil || count != 0 {
+	x, err := m.source(ctx, "source", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	if err = x.withState(ctx, false, func(st *sourceState) error { count = len(st.Credentials); return nil }); err != nil || count != 0 {
 		t.Fatal("failed registration left an orphan credential")
 	}
 	// Fail after credential insertion to check transaction rollback too.
@@ -137,7 +154,7 @@ func TestCredentialCreationIsAtomicAndKeyPublicationIsConcurrent(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid record committed")
 	}
-	if err = m.sourceDB("source").QueryRow("SELECT COUNT(*) FROM CONNECTION_CONFIG WHERE PASSWORD_CIPHERTEXT_ IS NOT NULL").Scan(&count); err != nil || count != 0 {
+	if err = x.withState(ctx, false, func(st *sourceState) error { count = len(st.Credentials); return nil }); err != nil || count != 0 {
 		t.Fatal("credential survived a rolled-back record write")
 	}
 }

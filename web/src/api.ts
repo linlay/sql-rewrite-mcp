@@ -116,7 +116,6 @@ export interface PoliciesResponse {
   path: string;
   schemes: SchemeInfo[];
   variables: VariableInfo[];
-  fragments: Record<string, string>;
   policies: PolicyView[];
   as_of: string;
 }
@@ -194,7 +193,6 @@ export let selectedDatabase = localStorage.getItem('datascope-database') || loca
 export function selectDatabase(id: string) {
  selectedDatabase = id; localStorage.setItem('datascope-database', id); usersPromise = undefined;
 }
-export interface BusinessTool { name:string; description:string; sql:string; parameters:Record<string,{type:"string"|"integer"|"number"|"boolean";description:string}> }
 export interface DatabaseConnection {
  host:string; port:number; database?:string; service_name?:string; schema:string; username:string; password_env?:string; credential_id?:string; tls_mode?:string;
 }
@@ -222,10 +220,9 @@ export interface Database {
  discovery?:Discovery;
  connection?:DatabaseConnection;
  authentication?: {type:"local";label?:string;employee_directory?:boolean;access?:AuthPolicy;source?:'GLOBAL'|'DATABASE';provider?:AuthProvider};
- business_tools?:BusinessTool[];
  permissions?: string[]; business_user_id?: number;
  id: string; name: string; driver: string; path: string; mcp_enabled: boolean; knowledge_enabled?:boolean; mcp_path?: string; mcp_endpoint?: string; tools: string[]; revision: number; etag?: string;
- config: { version: number; schemes: SchemeInfo[]; fragments: Record<string,string>; tables: PolicyView[] };
+ config: { version: number; schemes: SchemeInfo[]; tables: PolicyView[] };
 }
 export const databases = {
  list: () => request<Database[]>('/api/databases'),

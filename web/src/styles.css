@@ -342,8 +342,7 @@ details > summary {
 .policy-sql-grid {display:grid;grid-template-columns:minmax(0,1fr);gap:16px;}
 .policy-sql-grid.has-guard {grid-template-columns:repeat(2,minmax(0,1fr));}
 .policy-sql-field {min-width:0;display:flex;flex-direction:column;gap:6px;}
-.fragment-editor-grid {display:grid;grid-template-columns:210px minmax(0,1fr);gap:20px;}
-@media(max-width:700px){.policy-sql-grid.has-guard,.policy-options-grid,.fragment-editor-grid{grid-template-columns:minmax(0,1fr);}.fragment-editor-grid .ant-menu{max-height:180px;overflow:auto;}}
+@media(max-width:700px){.policy-sql-grid.has-guard,.policy-options-grid{grid-template-columns:minmax(0,1fr);}}
 .action-workspace {display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px;align-items:start;}
 .action-list-panel {position:sticky;top:56px;min-width:0;}
 .action-list-panel .ant-card-head {padding-inline:14px;}

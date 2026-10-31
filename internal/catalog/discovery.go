@@ -3,7 +3,6 @@ package catalog
 import (
 	"context"
 	"datascope-server/internal/audit"
-	"datascope-server/internal/management"
 	"datascope-server/internal/rewrite"
 	"datascope-server/internal/store"
 	"encoding/json"
@@ -34,48 +33,14 @@ type SchemaReport struct {
 }
 
 type Discovery struct {
-	Pending     *PendingDiscovery                `json:"pending,omitempty" yaml:"pending,omitempty"`
+	Pending     *PendingDiscovery                `json:"pending,omitempty" yaml:"-"`
 	Version     int                              `json:"version" yaml:"version"`
-	CheckedAt   time.Time                        `json:"checked_at" yaml:"checked_at"`
-	AttemptedAt time.Time                        `json:"attempted_at" yaml:"attempted_at"`
-	Error       string                           `json:"error,omitempty" yaml:"error,omitempty"`
+	CheckedAt   time.Time                        `json:"checked_at" yaml:"-"`
+	AttemptedAt time.Time                        `json:"attempted_at" yaml:"-"`
+	Error       string                           `json:"error,omitempty" yaml:"-"`
 	Tables      []store.TableSchema              `json:"tables" yaml:"tables"`
 	Annotations map[string]store.TableAnnotation `json:"annotations" yaml:"annotations"`
-	Reports     []SchemaReport                   `json:"reports" yaml:"reports"`
-}
-
-// Operational checks are small records, separate from versioned source
-// snapshots. An unchanged periodic check must not invalidate open editors or
-// write another full copy of the schema into history and audit.
-type discoveryCheck struct {
-	CheckedAt   time.Time `json:"checked_at"`
-	AttemptedAt time.Time `json:"attempted_at"`
-	Error       string    `json:"error"`
-}
-
-func (c *Catalog) recordDiscoveryCheck(ctx context.Context, id string, checked time.Time, scanErr error) error {
-	if c.Management == nil {
-		return nil
-	}
-	check := discoveryCheck{CheckedAt: checked, AttemptedAt: time.Now().UTC()}
-	if scanErr != nil {
-		check.Error = scanErr.Error()
-	}
-	return c.Management.UpdateRecords(ctx, "discovery_checks", "database.discovery_check", id, func(records []management.Record) ([]management.Record, error) {
-		for _, r := range records {
-			if r.Key == id {
-				var old discoveryCheck
-				if err := json.Unmarshal([]byte(r.Data), &old); err != nil {
-					return nil, err
-				}
-				if old.CheckedAt.After(check.CheckedAt) {
-					check.CheckedAt = old.CheckedAt
-				}
-			}
-		}
-		raw, err := json.Marshal(check)
-		return []management.Record{{Key: id, Data: string(raw)}}, err
-	})
+	Reports     []SchemaReport                   `json:"reports" yaml:"-"`
 }
 
 // OpenStore deliberately does not compile policies: inspection must remain
@@ -246,6 +211,8 @@ func reconcilePolicies(cfg *rewrite.Config, tables []store.TableSchema) {
 }
 
 func (c *Catalog) Discover(ctx context.Context, id string) (*Database, error) {
+	c.scanMu.Lock()
+	defer c.scanMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	d, err := c.Get(id)
@@ -288,9 +255,8 @@ func (c *Catalog) Discover(ctx context.Context, id string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.recordDiscoveryCheck(ctx, id, time.Now().UTC(), nil); err != nil {
-		return nil, err
-	}
+	c.recordDiscoveryReport(id, SchemaReport{Version: 1, At: time.Now().UTC(), Changes: schemaDiff(nil, tables, nil)})
+	c.recordDiscoveryCheck(id, time.Now().UTC(), nil)
 	return c.Get(id)
 }
 
@@ -305,10 +271,6 @@ func applyDiscovery(d *Database, tables []store.TableSchema) {
 	s.Error = ""
 	if s.Version == 0 || len(changes) > 0 {
 		s.Version++
-		s.Reports = append(s.Reports, SchemaReport{Version: s.Version, At: s.CheckedAt, Changes: changes})
-		if len(s.Reports) > 20 {
-			s.Reports = s.Reports[len(s.Reports)-20:]
-		}
 	}
 	s.Tables = tables
 	reconcilePolicies(d.Config, tables)
@@ -389,30 +351,11 @@ func (c *Catalog) RunDiscovery(ctx context.Context, interval time.Duration) {
 				if _, err := c.Discover(scanCtx, d.ID); err != nil && ctx.Err() == nil {
 					slog.Warn("数据库自动侦查失败", "database_id", d.ID, "error", err)
 					// Preserve the last complete snapshot and report a failed attempt.
-					if c.Management != nil {
-						checked := time.Time{}
-						if d.Discovery != nil {
-							checked = d.Discovery.CheckedAt
-						}
-						if e := c.recordDiscoveryCheck(scanCtx, d.ID, checked, err); e != nil {
-							slog.Error("保存侦查状态失败", "database_id", d.ID, "error", e)
-						}
-						continue
+					checked := time.Time{}
+					if d.Discovery != nil {
+						checked = d.Discovery.CheckedAt
 					}
-					_ = c.updateContext(ctx, "database.discovery_failed", d.ID, func(items *[]Database) error {
-						for i := range *items {
-							x := &(*items)[i]
-							if x.ID == d.ID && x.Revision == d.Revision {
-								if x.Discovery == nil {
-									x.Discovery = &Discovery{}
-								}
-								x.Discovery.Error = err.Error()
-								x.Discovery.AttemptedAt = time.Now().UTC()
-								x.Revision++
-							}
-						}
-						return nil
-					})
+					c.recordDiscoveryCheck(d.ID, checked, err)
 				}
 			}
 		}

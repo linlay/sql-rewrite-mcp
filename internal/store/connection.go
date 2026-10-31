@@ -271,7 +271,7 @@ func (s *Store) Prepare(query string, args ...any) (string, []any, error) {
 	return s.engine.Compile(query, args...)
 }
 
-// ValidatePortable is also used while saving policies and configured tools,
+// ValidatePortable is also used while saving permission policies,
 // before the query can become visible to clients.
 func (s *Store) ValidatePortable(query string, names []string) error {
 	args := make([]any, 0, len(names))

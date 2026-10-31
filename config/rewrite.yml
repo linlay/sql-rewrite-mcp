@@ -4,23 +4,6 @@ schemes:
   - {scheme: CUSTOMER, name: 客户权限, description: 按资金账户归属控制业务数据及对应客户资料}
   - {scheme: EMPLOYEE, name: 员工权限, description: 本人及有效管理范围内员工}
   - {scheme: RESTRICTED, name: 管理范围, description: 仅管理员可查询权限配置}
-fragments:
-  is_admin: >-
-    EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id
-    WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN')
-  active_employee: >-
-    EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active')
-  visible_departments: >-
-    SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s
-    ON s.department_code=d.code OR s.branch_code=d.branch_code
-    WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10)
-    AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10))
-  visible_fund_accounts: >-
-    SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE {{active_employee}}
-    AND ({{is_admin}} OR f.manager_id=${userId} OR f.department_code IN ({{visible_departments}}))
-  visible_customers: >-
-    SELECT DISTINCT f.customer_no FROM main.fund_accounts AS f
-    WHERE f.fund_account_no IN ({{visible_fund_accounts}})
 tables:
   - {table: roles, scheme: NONE, reason: 公共字典, passthrough: true}
   - {table: branches, scheme: NONE, reason: 公共字典, passthrough: true}
@@ -32,47 +15,47 @@ tables:
   - table: customers
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.customers AS t WHERE t.customer_no IN ({{visible_customers}})
+    sql: SELECT t.* FROM main.customers AS t WHERE t.customer_no IN (SELECT DISTINCT f.customer_no FROM main.fund_accounts AS f WHERE f.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10))))))
   - table: fund_accounts
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.fund_accounts AS t WHERE t.fund_account_no IN ({{visible_fund_accounts}})
+    sql: SELECT t.* FROM main.fund_accounts AS t WHERE t.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))))
   - table: stock_accounts
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.stock_accounts AS t WHERE t.fund_account_no IN ({{visible_fund_accounts}})
+    sql: SELECT t.* FROM main.stock_accounts AS t WHERE t.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))))
   - table: orders
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.orders AS t WHERE t.fund_account_no IN ({{visible_fund_accounts}})
+    sql: SELECT t.* FROM main.orders AS t WHERE t.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))))
   - table: trades
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.trades AS t WHERE t.fund_account_no IN ({{visible_fund_accounts}})
+    sql: SELECT t.* FROM main.trades AS t WHERE t.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))))
   - table: cash_flows
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.cash_flows AS t WHERE t.fund_account_no IN ({{visible_fund_accounts}})
+    sql: SELECT t.* FROM main.cash_flows AS t WHERE t.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))))
   - table: positions
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.positions AS t WHERE t.fund_account_no IN ({{visible_fund_accounts}})
+    sql: SELECT t.* FROM main.positions AS t WHERE t.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))))
   - table: daily_balances
     scheme: CUSTOMER
     reason: 按资金账户开户营业部和客户经理计算权限
-    sql: SELECT t.* FROM main.daily_balances AS t WHERE t.fund_account_no IN ({{visible_fund_accounts}})
+    sql: SELECT t.* FROM main.daily_balances AS t WHERE t.fund_account_no IN (SELECT f.fund_account_no FROM main.fund_accounts AS f WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR f.manager_id=${userId} OR f.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))))
   - table: employees
     scheme: EMPLOYEE
     reason: 本人及管理范围内员工（分公司范围包括分公司负责人）
     sql: >-
-      SELECT t.* FROM main.employees AS t WHERE {{active_employee}} AND
-      ({{is_admin}} OR t.employee_id=${userId} OR t.department_code IN ({{visible_departments}})
+      SELECT t.* FROM main.employees AS t WHERE EXISTS (SELECT 1 FROM main.employees AS a WHERE a.employee_id=${userId} AND a.status='active') AND
+      (EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN') OR t.employee_id=${userId} OR t.department_code IN (SELECT d.code FROM main.departments AS d JOIN main.employee_scopes AS s ON s.department_code=d.code OR s.branch_code=d.branch_code WHERE s.employee_id=${userId} AND s.effective_date<=substr(${asOf},1,10) AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10)))
       OR EXISTS (SELECT 1 FROM main.employee_scopes AS s WHERE s.employee_id=${userId}
       AND s.branch_code=t.branch_code AND s.effective_date<=substr(${asOf},1,10)
       AND (s.expiry_date IS NULL OR s.expiry_date>substr(${asOf},1,10))))
   - table: employee_scopes
     scheme: RESTRICTED
     reason: 仅管理员可查询管理范围配置
-    deny_unless: "{{is_admin}}"
+    deny_unless: "EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN')"
     deny_message: 仅在职管理员可查询
-    sql: SELECT t.* FROM main.employee_scopes AS t WHERE {{is_admin}}
+    sql: SELECT t.* FROM main.employee_scopes AS t WHERE EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN')

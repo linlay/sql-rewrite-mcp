@@ -65,7 +65,7 @@ func setup(t *testing.T) *fixture {
 	db.Close()
 	st, e := store.Open(path, time.Second)
 	must(t, e)
-	cfg := &rewrite.Config{Version: 1, Schemes: []rewrite.SchemeInfo{{Scheme: "CUSTOM", Name: "owner"}}, Fragments: map[string]string{}, Tables: []*rewrite.Policy{{Table: "items", Scheme: "CUSTOM", SQL: "SELECT * FROM main.items WHERE owner_id = ${userId}"}}}
+	cfg := &rewrite.Config{Version: 1, Schemes: []rewrite.SchemeInfo{{Scheme: "CUSTOM", Name: "owner"}}, Tables: []*rewrite.Policy{{Table: "items", Scheme: "CUSTOM", SQL: "SELECT * FROM main.items WHERE owner_id = ${userId}"}}}
 	_, e = catalog.New(filepath.Join(dir, "databases"), st, cfg, store.DefaultAsOf, time.Second)
 	must(t, e)
 	c, e := catalog.BootstrapManaged(ctx, m, filepath.Join(dir, "databases"), st, "unused", store.DefaultAsOf, time.Second, filepath.Join(dir, "old.json"))
@@ -303,10 +303,12 @@ func TestCatalogMigrationConcurrencyAndInternalIsolation(t *testing.T) {
 	if count != 0 {
 		t.Fatal("runtime audit queue persisted in management")
 	}
-	must(t, sourceDB(t, f, "default").QueryRow("SELECT COUNT(*) FROM CONFIG_VERSION WHERE BUCKET_='databases'").Scan(&count))
-	if count < 2 {
-		t.Fatal("missing versions")
+	current, e := f.c.Get("default")
+	must(t, e)
+	if current.Revision != one.Revision+1 {
+		t.Fatal("revision did not advance exactly once")
 	}
+	assertNoBusinessSQLite(t, f, "default")
 }
 
 type bearer struct{ token string }
@@ -355,7 +357,7 @@ func TestOAuthMCPManagementKnowledgeAndLiveRevocation(t *testing.T) {
 	d, e := f.c.Get("default")
 	must(t, e)
 	d.Tools = []string{"list_tables", "describe_table", "query", "raw_query", "search_knowledge", "read_knowledge"}
-	d.BusinessTools = []catalog.BusinessTool{{Name: "find_items", Description: "Find by name", SQL: "SELECT id,name FROM items WHERE name=:arg_name", Parameters: map[string]catalog.ToolParameter{"name": {Type: "string", Description: "Exact name"}}}}
+
 	must(t, f.c.Save(f.ctx, *d))
 	h, e := mcpserver.ManagedHTTPHandler(f.c, nil, mcpserver.Options{AuthMode: "oauth", Management: f.m, Application: f.app}, "oauth", issuer, base, "/mcp")
 	must(t, e)
@@ -557,7 +559,7 @@ func TestDirectSQLReplacesNamedTools(t *testing.T) {
 	session := connectMCP(t, env.resource+"/default", tokens["access"])
 	d, e := f.c.Get("default")
 	must(t, e)
-	d.BusinessTools = []catalog.BusinessTool{{Name: "find_items", Description: "legacy", SQL: "SELECT id FROM items", Parameters: map[string]catalog.ToolParameter{}}}
+
 	must(t, f.c.Save(f.ctx, *d))
 	list, e := session.ListTools(ctx, nil)
 	must(t, e)
@@ -620,9 +622,10 @@ func TestKnowledgeVisibilityAndConflict(t *testing.T) {
 	}
 }
 
-func sourceDB(t *testing.T, f *fixture, id string) *sql.DB {
+func assertNoBusinessSQLite(t *testing.T, f *fixture, id string) {
 	t.Helper()
-	x, e := f.m.Source(f.ctx, id)
-	must(t, e)
-	return x.DB
+	_, e := os.Stat(filepath.Join(filepath.Dir(f.m.Path), "databases", id, "management.db"))
+	if !os.IsNotExist(e) {
+		t.Fatal("runtime created a business SQLite database", e)
+	}
 }

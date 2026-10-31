@@ -41,7 +41,6 @@ type Database struct {
 	Discovery              *Discovery          `json:"discovery,omitempty" yaml:"discovery,omitempty"`
 	AuthenticationRevision int64               `json:"authentication_revision,omitempty" yaml:"authentication_revision,omitempty"`
 	Authentication         *Authentication     `json:"authentication,omitempty" yaml:"authentication,omitempty"`
-	BusinessTools          []BusinessTool      `json:"business_tools,omitempty" yaml:"business_tools,omitempty"`
 	ID                     string              `json:"id" yaml:"id"`
 	Name                   string              `json:"name" yaml:"name"`
 	Driver                 string              `json:"driver" yaml:"driver"`
@@ -56,12 +55,15 @@ type Database struct {
 	ETag                   string              `json:"etag,omitempty" yaml:"-"`
 }
 type Catalog struct {
-	Management *management.Store
-	Audit      *audit.Store
-	Path       string
-	Timeout    time.Duration
-	AsOf       time.Time
-	mu         sync.Mutex
+	Management     *management.Store
+	Audit          *audit.Store
+	Path           string
+	Timeout        time.Duration
+	AsOf           time.Time
+	scanMu         sync.Mutex
+	runtimeMu      sync.Mutex
+	discoveryState map[string]*discoveryRuntime
+	mu             sync.Mutex
 }
 
 // Bootstrap imports legacy JSON or the initial rewrite rules only once.
@@ -141,7 +143,7 @@ func migrateDatabaseNames(items *[]Database) error {
 // Each database is stored in its own YAML file. Invalid files fail closed.
 func (c *Catalog) List() ([]Database, error) {
 	if c.Management != nil {
-		return c.listSQLite(context.Background())
+		return c.listManaged(context.Background())
 	}
 	entries, err := os.ReadDir(c.Path)
 	if err != nil {
@@ -189,6 +191,7 @@ func (c *Catalog) List() ([]Database, error) {
 		}
 		return items[i].ID < items[j].ID
 	})
+	c.overlayDiscovery(items)
 	return items, nil
 }
 
@@ -322,6 +325,14 @@ func (c *Catalog) Create(ctx context.Context, d Database, password string) (*Dat
 	if err := c.addDatabase(ctx, d, password); err != nil {
 		return nil, err
 	}
+	created, err := c.Get(d.ID)
+	if err != nil {
+		return nil, err
+	}
+	if created.Discovery != nil {
+		c.recordDiscoveryReport(d.ID, SchemaReport{Version: created.Discovery.Version, At: time.Now().UTC(), Changes: schemaDiff(nil, created.Discovery.Tables, nil)})
+		c.recordDiscoveryCheck(d.ID, time.Now().UTC(), nil)
+	}
 	return c.Get(d.ID)
 }
 
@@ -393,7 +404,7 @@ func (c *Catalog) addDatabase(ctx context.Context, d Database, password string) 
 	if err != nil {
 		return err
 	}
-	d.Config = &rewrite.Config{Version: 1, Schemes: []rewrite.SchemeInfo{{Scheme: "NONE", Name: "公共访问", Description: "不进行行权限改写"}, {Scheme: "CUSTOM", Name: "自定义改写", Description: "使用 SQL 模板过滤数据"}}, Fragments: map[string]string{}, Tables: []*rewrite.Policy{}}
+	d.Config = &rewrite.Config{Version: 1, Schemes: []rewrite.SchemeInfo{{Scheme: "NONE", Name: "公共访问", Description: "不进行行权限改写"}, {Scheme: "CUSTOM", Name: "自定义改写", Description: "使用完整 SQL 过滤数据"}}, Tables: []*rewrite.Policy{}}
 	d.Discovery = nil
 	applyDiscovery(&d, tables)
 	d.MCPEnabled = false
@@ -501,7 +512,7 @@ func (c *Catalog) update(fn func(*[]Database) error) error {
 }
 func (c *Catalog) updateContext(ctx context.Context, action, database string, fn func(*[]Database) error, credentials ...management.DatabaseCredential) error {
 	if c.Management != nil {
-		return c.updateSQLite(ctx, action, database, fn, credentials...)
+		return c.updateManaged(ctx, action, database, fn, credentials...)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()

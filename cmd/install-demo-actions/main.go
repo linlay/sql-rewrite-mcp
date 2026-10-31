@@ -77,21 +77,16 @@ func run() error {
 	if e = os.MkdirAll(*backupRoot, 0700); e != nil {
 		return e
 	}
-	path, e := filepath.Abs(filepath.Join(*backupRoot, time.Now().Format("20060102-150405.000000000")+"-management.db"))
+	path, e := filepath.Abs(filepath.Join(*backupRoot, time.Now().Format("20060102-150405.000000000")+"-management"))
 	if e != nil {
 		return e
 	}
-	f, e := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if e != nil {
-		return e
-	}
-	f.Close()
 	source, e := m.Source(ctx, d.ID)
 	if e != nil {
 		return e
 	}
-	if _, e = source.DB.ExecContext(ctx, "VACUUM main INTO ?", path); e != nil {
-		return fmt.Errorf("管理库备份失败: %w", e)
+	if e = source.Backup(ctx, path); e != nil {
+		return fmt.Errorf("管理配置备份失败: %w", e)
 	}
 	app := &application.Service{Management: m, Catalog: c}
 	result, e := demoactions.Install(ctx, app, *id, accounts, *replace)

@@ -3,9 +3,7 @@ package catalog
 import (
 	"context"
 	"crypto/rand"
-	"datascope-server/internal/management"
 	"datascope-server/internal/store"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -42,48 +40,25 @@ func (c *Catalog) stageDiscovery(ctx context.Context, d *Database, tables []stor
 			pending = &PendingDiscovery{ID: fmt.Sprintf("change_%x", raw), BaseVersion: d.Discovery.Version, DetectedAt: time.Now().UTC(), Tables: tables, Changes: changes}
 		}
 	}
-	if c.Management != nil {
-		err := c.Management.UpdateRecords(ctx, "discovery_pending", "database.discovery_detected", d.ID, func([]management.Record) ([]management.Record, error) {
-			current, err := c.Get(d.ID)
-			if err != nil {
-				return nil, err
-			}
-			if current.Revision != d.Revision {
-				return nil, errors.New("扫描期间配置已更新，请重新检查")
-			}
-			raw, err := json.Marshal(pending)
-			return []management.Record{{Key: d.ID, Data: string(raw)}}, err
-		})
-		if err != nil {
-			return nil, err
-		}
-		if err := c.recordDiscoveryCheck(ctx, d.ID, time.Now().UTC(), nil); err != nil {
-			return nil, err
-		}
-	} else {
-		err := c.updateContext(ctx, "database.discovery_detected", d.ID, func(items *[]Database) error {
-			for i := range *items {
-				x := &(*items)[i]
-				if x.ID == d.ID {
-					if x.Revision != d.Revision || x.ETag != d.ETag {
-						return errors.New("扫描期间配置已更新，请重新检查")
-					}
-					x.Discovery.Pending = pending
-					x.Discovery.CheckedAt = time.Now().UTC()
-					x.Discovery.AttemptedAt = x.Discovery.CheckedAt
-					return nil
-				}
-			}
-			return errors.New("数据库不存在")
-		})
-		if err != nil {
-			return nil, err
-		}
+	current, err := c.Get(d.ID)
+	if err != nil {
+		return nil, err
 	}
+	if current.Revision != d.Revision || current.ETag != d.ETag {
+		return nil, errors.New("扫描期间配置已更新，请重新检查")
+	}
+	c.runtimeMu.Lock()
+	state := c.discoveryRuntimeLocked(d.ID)
+	state.pending = pending
+	state.source = discoverySource(d)
+	c.runtimeMu.Unlock()
+	c.recordDiscoveryCheck(d.ID, time.Now().UTC(), nil)
 	return c.Get(d.ID)
 }
 
 func (c *Catalog) ApplyDiscovery(ctx context.Context, id, candidate string, revision int, resolutions []AnnotationResolution) (*Database, error) {
+	c.scanMu.Lock()
+	defer c.scanMu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	d, err := c.Get(id)
@@ -157,26 +132,13 @@ func (c *Catalog) ApplyDiscovery(ctx context.Context, id, candidate string, revi
 	if err != nil {
 		return nil, err
 	}
-	if c.Management != nil {
-		// An older candidate is also hidden by base_version after the approved
-		// snapshot commits, even if clearing this operational record fails.
-		err = c.Management.UpdateRecords(ctx, "discovery_pending", "database.discovery_reviewed", id, func(records []management.Record) ([]management.Record, error) {
-			for _, r := range records {
-				if r.Key == id {
-					var current *PendingDiscovery
-					if err := json.Unmarshal([]byte(r.Data), &current); err != nil {
-						return nil, err
-					}
-					if current != nil && current.ID != candidate {
-						return nil, nil
-					}
-				}
-			}
-			return []management.Record{{Key: id, Data: "null"}}, nil
-		})
-		if err != nil {
-			return nil, err
-		}
+	c.runtimeMu.Lock()
+	state := c.discoveryRuntimeLocked(id)
+	if state.pending != nil && state.pending.ID == candidate {
+		state.pending = nil
 	}
+	c.runtimeMu.Unlock()
+	c.recordDiscoveryReport(id, SchemaReport{Version: pending.BaseVersion + 1, At: time.Now().UTC(), Changes: schemaDiff(d.Discovery.Tables, pending.Tables, d.Discovery.Annotations)})
+	c.recordDiscoveryCheck(id, time.Now().UTC(), nil)
 	return c.Get(id)
 }

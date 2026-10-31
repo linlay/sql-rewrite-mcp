@@ -92,6 +92,9 @@ func (s *Store) initAuth() error {
 	return s.SaveAuthConfig(context.Background(), cfg)
 }
 func (s *Store) AuthConfig(ctx context.Context) (AuthConfig, error) {
+	if err := s.recoverPending(ctx); err != nil {
+		return AuthConfig{}, err
+	}
 	cfg := AuthConfig{Providers: []AuthProvider{}, Policies: []AuthPolicy{}, Bindings: []AuthBinding{}}
 	if e := s.DB.QueryRowContext(ctx, "SELECT REVISION_,DEFAULT_POLICY_ID_ FROM AUTH_SETTING WHERE ID_=1").Scan(&cfg.Revision, &cfg.DefaultPolicyID); e != nil {
 		return cfg, e
@@ -135,7 +138,29 @@ func (s *Store) AuthConfig(ctx context.Context) (AuthConfig, error) {
 		}
 		cfg.Bindings = append(cfg.Bindings, b)
 	}
-	return cfg, rows.Err()
+	if err := rows.Err(); err != nil {
+		return cfg, err
+	}
+	rows.Close()
+	ids, err := s.sourceIDs()
+	if err != nil {
+		return cfg, err
+	}
+	for _, id := range ids {
+		x, err := s.Source(ctx, id)
+		if err != nil {
+			return cfg, err
+		}
+		if err = x.withState(ctx, false, func(st *sourceState) error {
+			if st.BindingPolicyID != "" {
+				cfg.Bindings = append(cfg.Bindings, AuthBinding{TargetType: "DATABASE", TargetID: id, PolicyID: st.BindingPolicyID})
+			}
+			return nil
+		}); err != nil {
+			return cfg, err
+		}
+	}
+	return cfg, nil
 }
 func authURL(raw string) bool {
 	u, e := url.Parse(raw)
@@ -233,39 +258,54 @@ func (s *Store) SaveAuthConfig(ctx context.Context, cfg AuthConfig) error {
 	if e := validateAuth(cfg); e != nil {
 		return e
 	}
-	return s.Change(ctx, "authentication.save", "", map[string]any{"revision": cfg.Revision + 1}, func(tx *sql.Tx) error {
+	return fileLock(ctx, s.Path+".config.lock", func() error {
+		if err := s.recoverPendingLocked(ctx); err != nil {
+			return err
+		}
 		var revision int
-		e := tx.QueryRowContext(ctx, "SELECT REVISION_ FROM AUTH_SETTING WHERE ID_=1").Scan(&revision)
+		e := s.DB.QueryRowContext(ctx, "SELECT REVISION_ FROM AUTH_SETTING WHERE ID_=1").Scan(&revision)
 		if e != nil && e != sql.ErrNoRows {
 			return e
 		}
 		if revision != cfg.Revision {
 			return fmt.Errorf("认证配置已变更，请刷新后重试")
 		}
-		for _, table := range []string{"AUTH_BINDING", "AUTH_POLICY", "AUTH_PROVIDER"} {
-			if _, e = tx.ExecContext(ctx, "DELETE FROM "+table); e != nil {
-				return e
-			}
-		}
-		for _, p := range cfg.Providers {
-			raw, _ := json.Marshal(p)
-			if _, e = tx.ExecContext(ctx, "INSERT INTO AUTH_PROVIDER VALUES(?,?,?,?)", p.ID, p.Name, p.Type, string(raw)); e != nil {
-				return e
-			}
-		}
-		for _, p := range cfg.Policies {
-			raw, _ := json.Marshal(p)
-			if _, e = tx.ExecContext(ctx, "INSERT INTO AUTH_POLICY VALUES(?,?,?,?,?)", p.ID, p.Name, p.Mode, p.ProviderID, string(raw)); e != nil {
-				return e
-			}
-		}
+		bindings := map[string]string{}
 		for _, b := range cfg.Bindings {
-			if _, e = tx.ExecContext(ctx, "INSERT INTO AUTH_BINDING VALUES(?,?,?)", b.TargetType, b.TargetID, b.PolicyID); e != nil {
+			if b.TargetType == "DATABASE" {
+				bindings[b.TargetID] = b.PolicyID
+			}
+		}
+		change := configurationChange{Sources: map[string]*sourceState{}, Authentication: &cfg}
+		ids, e := s.sourceIDs()
+		if e != nil {
+			return e
+		}
+		for _, id := range ids {
+			x, e := s.Source(ctx, id)
+			if e != nil {
+				return e
+			}
+			if e = x.withState(ctx, false, func(st *sourceState) error {
+				key := bindings[id]
+				delete(bindings, id)
+				if st.BindingPolicyID != key {
+					st.BindingPolicyID = key
+					change.Sources[id] = st
+				}
+				return nil
+			}); e != nil {
 				return e
 			}
 		}
-		_, e = tx.ExecContext(ctx, "INSERT INTO AUTH_SETTING VALUES(1,?,?) ON CONFLICT(ID_) DO UPDATE SET REVISION_=excluded.REVISION_,DEFAULT_POLICY_ID_=excluded.DEFAULT_POLICY_ID_", revision+1, cfg.DefaultPolicyID)
-		return e
+		if len(bindings) > 0 {
+			return fmt.Errorf("认证绑定引用不存在的数据源")
+		}
+		if e = s.commitChange(ctx, change); e != nil {
+			return e
+		}
+		s.auditChange(ctx, s.Audit, "", "authentication.save", map[string]any{"revision": cfg.Revision + 1})
+		return nil
 	})
 }
 func (s *Store) ResolveAuth(ctx context.Context, kind, id string) (ResolvedAuth, error) {
@@ -301,14 +341,15 @@ func (s *Store) ResolveAuth(ctx context.Context, kind, id string) (ResolvedAuth,
 			return out, err
 		}
 		if err == nil {
-			var raw string
-			if err = x.DB.QueryRowContext(ctx, "SELECT DATA_ FROM SOURCE_CONFIG WHERE ID_=?", id).Scan(&raw); err != nil {
+			d, err := x.load(ctx)
+			if err != nil {
 				return out, err
 			}
+			raw, _ := json.Marshal(d)
 			var source struct {
 				Authentication *DatabaseAuthConnection `json:"authentication"`
 			}
-			if err = json.Unmarshal([]byte(raw), &source); err != nil {
+			if err = json.Unmarshal(raw, &source); err != nil {
 				return out, err
 			}
 			if source.Authentication != nil {

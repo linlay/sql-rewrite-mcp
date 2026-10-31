@@ -62,24 +62,22 @@ const minimalConfig = `
 version: 1
 schemes:
   - {scheme: S, name: s, description: d}
-fragments:
-  me: "u.id = ${userId}"
 tables:
 `
 
 func TestConfigValidation(t *testing.T) {
 	for name, c := range map[string]struct{ tables, want string }{
-		"missing sql":        {"  - {table: a, scheme: S, reason: r}", "passthrough: true"},
-		"both":               {"  - {table: a, scheme: S, reason: r, passthrough: true, sql: 'SELECT 1'}", "二选一"},
-		"unknown scheme":     {"  - {table: a, scheme: X, reason: r, passthrough: true}", "未定义的方案"},
-		"unknown variable":   {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE t.id = ${tenantId}'}", "未知变量"},
-		"unqualified table":  {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM a AS t'}", "main.a"},
-		"unknown fragment":   {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE {{nope}}'}", "未定义的片段"},
-		"raw bind parameter": {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE t.id = :userId OR t.id = ?'}", "绑定参数"},
-		"not select":         {"  - {table: a, scheme: S, reason: r, sql: 'DELETE FROM main.a'}", "SELECT"},
-		"bad guard":          {"  - {table: a, scheme: S, reason: r, passthrough: true, deny_unless: 'EXISTS (SELECT 1 FROM b)'}", "main.b"},
-		"duplicate table":    {"  - {table: a, scheme: S, reason: r, passthrough: true}\n  - {table: A, scheme: S, reason: r, passthrough: true}", "重复"},
-		"misspelled key":     {"  - {table: a, scheme: S, reason: r, passthru: true}", "passthru"},
+		"missing sql":                {"  - {table: a, scheme: S, reason: r}", "passthrough: true"},
+		"both":                       {"  - {table: a, scheme: S, reason: r, passthrough: true, sql: 'SELECT 1'}", "二选一"},
+		"unknown scheme":             {"  - {table: a, scheme: X, reason: r, passthrough: true}", "未定义的方案"},
+		"unknown variable":           {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE t.id = ${tenantId}'}", "未知变量"},
+		"unqualified table":          {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM a AS t'}", "main.a"},
+		"retired fragment reference": {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE {{nope}}'}", "无法解析"},
+		"raw bind parameter":         {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE t.id = :userId OR t.id = ?'}", "绑定参数"},
+		"not select":                 {"  - {table: a, scheme: S, reason: r, sql: 'DELETE FROM main.a'}", "SELECT"},
+		"bad guard":                  {"  - {table: a, scheme: S, reason: r, passthrough: true, deny_unless: 'EXISTS (SELECT 1 FROM b)'}", "main.b"},
+		"duplicate table":            {"  - {table: a, scheme: S, reason: r, passthrough: true}\n  - {table: A, scheme: S, reason: r, passthrough: true}", "重复"},
+		"misspelled key":             {"  - {table: a, scheme: S, reason: r, passthru: true}", "passthru"},
 	} {
 		_, err := ParseConfig([]byte(minimalConfig + c.tables))
 		if err == nil || !strings.Contains(err.Error(), c.want) {
@@ -87,13 +85,11 @@ func TestConfigValidation(t *testing.T) {
 		}
 	}
 
-	cyclic := strings.Replace(minimalConfig, `me: "u.id = ${userId}"`, "x: '{{y}}'\n  y: '{{x}}'", 1) +
-		"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE {{x}}'}"
-	if _, err := ParseConfig([]byte(cyclic)); err == nil || !strings.Contains(err.Error(), "循环") {
-		t.Errorf("fragment cycle: %v", err)
+	if _, err := ParseConfig([]byte("fragments: {}\n" + minimalConfig)); err == nil {
+		t.Fatal("retired fragments field accepted")
 	}
 
-	ok, err := ParseConfig([]byte(minimalConfig + "  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE {{me}}'}"))
+	ok, err := ParseConfig([]byte(minimalConfig + "  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE u.id = ${userId}'}"))
 	if err != nil {
 		t.Fatal(err)
 	}
