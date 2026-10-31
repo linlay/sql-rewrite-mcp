@@ -228,9 +228,35 @@ func publishState(path string, state *sourceState) error {
 
 func jsonValue(v any) any {
 	b, _ := json.Marshal(v)
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
 	var out any
-	_ = json.Unmarshal(b, &out)
-	return out
+	_ = dec.Decode(&out)
+	return yamlNumbers(out)
+}
+
+// YAML must retain full SQLite int64 IDs, including values above 2^53.
+func yamlNumbers(v any) any {
+	switch x := v.(type) {
+	case json.Number:
+		if n, err := x.Int64(); err == nil {
+			return n
+		}
+		n, _ := x.Float64()
+		return n
+	case map[string]any:
+		for k, value := range x {
+			x[k] = yamlNumbers(value)
+		}
+		return x
+	case []any:
+		for i, value := range x {
+			x[i] = yamlNumbers(value)
+		}
+		return x
+	default:
+		return v
+	}
 }
 
 // Dynamic dictionary keys are business identifiers, never DataScope fields.

@@ -77,6 +77,19 @@ func TestDatabaseCredentialsAreSealedAndShareable(t *testing.T) {
 	if _, err = m.SealDatabaseCredential("other", "other-password"); err != nil {
 		t.Fatal(err)
 	}
+	if err = m.UpdateRecords(ctx, "databases", "database.create", "other", func(records []Record) ([]Record, error) {
+		return append(records, Record{Key: "other", Data: `{"id":"other","connection":{"credential_id":"other"}}`}), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Use the same key to isolate AAD binding from key mismatch.
+	originalKey, err := os.ReadFile(filepath.Join(filepath.Dir(x.Path), "credentials.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(filepath.Dir(path), "databases", "other", "credentials.key"), originalKey, 0600); err != nil {
+		t.Fatal(err)
+	}
 	otherSource, err := m.source(ctx, "other", true)
 	if err != nil {
 		t.Fatal(err)

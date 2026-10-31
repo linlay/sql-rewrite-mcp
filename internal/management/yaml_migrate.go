@@ -101,9 +101,14 @@ func MigrateToYAML(ctx context.Context, global string) ([]MigrationReport, error
 							report.Backup = dest
 						}
 						fillMigrationReport(&report, st)
-						return nil
+						return writeMigrationMarker(parent)
 					} else if !os.IsNotExist(e) {
 						return e
+					}
+					if _, err := os.Stat(filepath.Join(parent, ".management-yaml-migrated")); err == nil {
+						return errors.New("该库已完成 YAML 迁移，当前配置缺失，请恢复 YAML 备份；禁止重新导入历史 SQLite")
+					} else if !os.IsNotExist(err) {
+						return err
 					}
 					old := filepath.Join(parent, "management.db")
 					if _, e := os.Stat(old); e != nil {
@@ -194,6 +199,9 @@ func MigrateToYAML(ctx context.Context, global string) ([]MigrationReport, error
 					}
 
 					if e = publishState(path, st); e != nil {
+						return e
+					}
+					if e = writeMigrationMarker(parent); e != nil {
 						return e
 					}
 					report.Backup = snapshot
@@ -347,4 +355,35 @@ func legacyState(ctx context.Context, db *sql.DB) (*sourceState, error) {
 	e = rows.Err()
 	rows.Close()
 	return st, e
+}
+
+// The marker prevents an explicit retry from resurrecting stale SQLite after a
+// completed YAML directory has subsequently been lost. Runtime never reads it.
+func writeMigrationMarker(parent string) error {
+	path := filepath.Join(parent, ".management-yaml-migrated")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	f, err := os.CreateTemp(parent, ".yaml-migration-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	_, err = f.WriteString("1\n")
+	if err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err = os.Rename(f.Name(), path); err != nil {
+		return err
+	}
+	return syncDir(parent)
 }

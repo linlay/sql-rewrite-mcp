@@ -329,3 +329,37 @@ func TestYAMLProcessPeer(t *testing.T) {
 		t.Fatal("ciphertext leaked")
 	}
 }
+
+func TestYAMLPreservesFullInt64AccountAndGrantIDs(t *testing.T) {
+	const id int64 = 9007199254740993
+	st := emptyState()
+	st.Database = map[string]any{"id": "source", "revision": float64(1)}
+	st.Accounts = []accountState{{BusinessAccount: BusinessAccount{ID: id, DatabaseID: "source", Username: "employee", Name: "Employee", BusinessUserID: id + 2, Active: true, AuthVersion: id + 4}, PasswordHash: "unchanged-hash"}}
+	st.Grants = []Grant{{UserID: id + 6, DatabaseID: "source", BusinessUserID: id + 8, Permissions: []string{"query"}}}
+	path := filepath.Join(t.TempDir(), "management")
+	if err := publishState(path, st); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readState(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Accounts[0].ID != id || got.Accounts[0].BusinessUserID != id+2 || got.Accounts[0].AuthVersion != id+4 || got.Grants[0].UserID != id+6 || got.Grants[0].BusinessUserID != id+8 {
+		t.Fatal("int64 identity lost precision")
+	}
+}
+
+func TestYAMLMigrationDoesNotResurrectHistoryAfterConfigurationLoss(t *testing.T) {
+	global, _ := migrationFixture(t)
+	ctx := context.Background()
+	reports, err := MigrateToYAML(ctx, global)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Rename(reports[0].Management, reports[0].Management+"-recovery-copy"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = MigrateToYAML(ctx, global); err == nil || !strings.Contains(err.Error(), "已完成 YAML 迁移") {
+		t.Fatal("completed upgrade reimported stale SQLite", err)
+	}
+}
