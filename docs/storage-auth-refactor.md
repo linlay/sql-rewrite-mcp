@@ -53,7 +53,7 @@ go run ./cmd/migrate-state -data-dir data
 
 迁移使用 VACUUM INTO 生成包含已提交 WAL 状态的一致性快照，先执行完整性检查，再转换。`data/legacy/yaml-<UTC时间>/` 保存全局管理快照、每个源的原管理快照、credentials.key 和非敏感迁移报告；原业务 management.db 也保留。迁移保留 ID、当前 revision、密码哈希、认证连接和绑定、授权、Action 脚本和参数、结构说明及知识内容。公共片段展开进每张表的完整 SQL，`${user_id}` 等参数绑定保持原文。旧命名查询不恢复为新功能，原内容留在历史快照。
 
-连接密码使用原密文和原逐库密钥，发布前验证能够解密；不会在日志、迁移报告或接口打印密码。每份新 YAML 发布前逐项回读比对，失败不覆盖旧配置。重复运行只校验已存在的 YAML，不再导入旧业务 SQLite；全局旧 DATABASE 认证绑定在迁移完成后移除，绑定只由 authentication.yml 提供。
+连接密码使用原密文和原逐库密钥，发布前验证能够解密；不会在日志、迁移报告或接口打印密码。每份新 YAML 发布前逐项回读比对，失败不覆盖旧配置。重复运行只校验当前 YAML，必要时备份并清理退役的派生字段，不再导入旧业务 SQLite；已迁移标记会阻止配置丢失后重新导入旧库；全局旧 DATABASE 认证绑定在迁移完成后移除，绑定只由 authentication.yml 提供。
 
 备份完整环境包括业务数据、全局 management.db、全体 management/、逐库 credentials.key、OAuth signing.pem，以及需要保留的全局和逐库 audit.db。先停服后整体复制；在线逐库 YAML 备份使用持锁的 `Source.Backup`，演示 Action 安装器已使用它。SQLite 在线备份必须使用快照，不能只复制 WAL 模式的主文件。
 
