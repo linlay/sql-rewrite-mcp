@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"datascope-server/internal/action"
@@ -98,6 +99,15 @@ func TestConfigurationCloneAPIAtomicPreservation(t *testing.T) {
 	target := prepareClone(t, f)
 	before := managementFiles(t, f, target.ID)
 	sourceBefore := managementFiles(t, f, "default")
+	receipt := management.ActionRequest{DatabaseID: target.ID, Actor: "own", RequestID: "target-receipt", Fingerprint: "target-private", State: "running"}
+	_, fresh, err := f.m.ReserveAction(f.ctx, receipt)
+	must(t, err)
+	if !fresh {
+		t.Fatal("receipt setup failed")
+	}
+	sourceReceipt := management.ActionRequest{DatabaseID: "default", Actor: "own", RequestID: "source-receipt", Fingerprint: "source-private", State: "running"}
+	_, _, err = f.m.ReserveAction(f.ctx, sourceReceipt)
+	must(t, err)
 	p := clonePreview(t, f, catalog.CloneRequest{SourceDatabaseID: "default"})
 	if len(p.Issues) != 0 || len(p.Items) != 4 {
 		t.Fatalf("preview: %+v", p)
@@ -132,6 +142,17 @@ func TestConfigurationCloneAPIAtomicPreservation(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sourceBefore, managementFiles(t, f, "default")) {
 		t.Fatal("source modified")
+	}
+	retained, fresh, err := f.m.ReserveAction(f.ctx, receipt)
+	must(t, err)
+	if fresh || retained.Fingerprint != "target-private" {
+		t.Fatal("target receipt replaced")
+	}
+	sourceReceipt.DatabaseID = target.ID
+	_, fresh, err = f.m.ReserveAction(f.ctx, sourceReceipt)
+	must(t, err)
+	if !fresh {
+		t.Fatal("source receipt copied")
 	}
 	if !strings.Contains(after["tables/items.yml"], "Cloned name") {
 		t.Fatal("missing annotation")
@@ -223,6 +244,25 @@ func TestConfigurationCloneRejectsChangesAndRequiresConfirmation(t *testing.T) {
 	db.Close()
 	if cloneCommit(f, req) == nil {
 		t.Fatal("accepted physical schema change after preview")
+	}
+	p = clonePreview(t, f, catalog.CloneRequest{SourceDatabaseID: "default"})
+	req = cloneConfirmed(p)
+	var wg sync.WaitGroup
+	errorsOut := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); errorsOut <- cloneCommit(f, req) }()
+	}
+	wg.Wait()
+	close(errorsOut)
+	success := 0
+	for err := range errorsOut {
+		if err == nil {
+			success++
+		}
+	}
+	if success != 1 {
+		t.Fatalf("concurrent confirmations applied %d times", success)
 	}
 }
 

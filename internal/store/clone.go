@@ -27,13 +27,16 @@ func (s *Store) CheckCloneSQL(ctx context.Context, query string) error {
 		return err
 	}
 	args := []any{}
-	params := []string{}
 	for name := range names {
 		args = append(args, sql.Named(name, nil))
-		params = append(params, name)
 	}
 	if s.Driver() != "sqlite" {
-		return s.ValidatePortable(query, params)
+		if _, selectSQL := stmt.(*parser.SelectStatement); selectSQL {
+			_, _, err = s.Prepare(query, args...)
+		} else {
+			_, _, err = s.engine.CompileWrite(query, args...)
+		}
+		return err
 	}
 	rows, err := s.db.QueryContext(ctx, "EXPLAIN "+query, args...)
 	if err != nil {

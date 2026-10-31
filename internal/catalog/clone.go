@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"datascope-server/internal/management"
 	"datascope-server/internal/rewrite"
@@ -132,6 +134,7 @@ func (c *Catalog) CloneConfiguration(ctx context.Context, targetID string, req C
 			}
 		}
 		sort.Strings(preview.Issues)
+		preview.Issues = slices.Compact(preview.Issues)
 		// Bind confirmation to both complete configurations, selected scopes,
 		// overwrite summary and the freshly inspected physical target schema.
 		raw, _ := json.Marshal(struct {
@@ -276,7 +279,18 @@ func buildClone(source, target *Database, sourceRecords, targetRecords []managem
 			}
 			// The snapshot comes exclusively from the target's live connection.
 			if len(out.Issues) == 0 {
-				applyDiscovery(next, actual)
+				d := next.Discovery
+				changes := schemaDiff(d.Tables, actual, d.Annotations)
+				d.CheckedAt = time.Now().UTC()
+				d.AttemptedAt, d.Error = d.CheckedAt, ""
+				if d.Version == 0 || len(changes) > 0 {
+					d.Version++
+					d.Reports = append(d.Reports, SchemaReport{Version: d.Version, At: d.CheckedAt, Changes: changes})
+					if len(d.Reports) > 20 {
+						d.Reports = d.Reports[len(d.Reports)-20:]
+					}
+				}
+				d.Tables = actual
 			}
 		}
 		if scope.Policies {
@@ -314,6 +328,24 @@ func buildClone(source, target *Database, sourceRecords, targetRecords []managem
 			result = append(result, management.Record{Key: target.ID + "/" + k.ID, Data: string(raw)})
 		}
 		out.Items = append(out.Items, CloneItem{"knowledge", len(sourceRecords), len(targetRecords), names})
+	}
+	// Keep target-only policies exactly as configured. Stale structure requires
+	// the existing review/sync flow; cloning must not silently trim access rules.
+	registered := map[string]bool{}
+	for _, p := range next.Config.Tables {
+		if p == nil {
+			continue
+		}
+		registered[strings.ToLower(p.Table)] = true
+		check(p.Table, "")
+		for _, column := range p.Columns {
+			check(p.Table, column)
+		}
+	}
+	for _, table := range actual {
+		if !registered[strings.ToLower(table.Name)] {
+			out.Issues = append(out.Issues, "目标库尚未登记表 "+table.Name+"，请先同步结构")
+		}
 	}
 	if next.Config.Validate() == nil {
 		for _, r := range result {
