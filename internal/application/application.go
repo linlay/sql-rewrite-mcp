@@ -24,56 +24,53 @@ type Service struct {
 	SecureCookies    bool
 }
 type Input struct {
-	Parameters                   map[string]any                 `json:"parameters,omitempty"`
-	ReleaseKnowledgeRestrictions bool                           `json:"release_knowledge_restrictions,omitempty"`
-	Clone                        *catalog.CloneRequest          `json:"clone,omitempty"`
-	AuthConfig                   *management.AuthConfig         `json:"auth_config,omitempty"`
-	Arguments                    map[string]any                 `json:"arguments,omitempty"`
-	WritePassword                string                         `json:"write_password,omitempty"`
-	ActorID                      *int64                         `json:"actor_id,omitempty"`
-	PlatformOnly                 bool                           `json:"platform_only,omitempty"`
-	Kind                         string                         `json:"kind,omitempty"`
-	Source                       string                         `json:"source,omitempty"`
-	Status                       string                         `json:"status,omitempty"`
-	Tool                         string                         `json:"tool,omitempty"`
-	StartedFrom                  string                         `json:"started_from,omitempty"`
-	StartedTo                    string                         `json:"started_to,omitempty"`
-	Resolutions                  []catalog.AnnotationResolution `json:"resolutions,omitempty"`
-	Table                        string                         `json:"table,omitempty"`
-	Column                       string                         `json:"column,omitempty"`
-	Annotation                   *store.Annotation              `json:"annotation,omitempty"`
-	Account                      *management.BusinessAccount    `json:"account,omitempty"`
-	DatabaseID                   string                         `json:"database_id,omitempty"`
-	UserID                       int64                          `json:"user_id,omitempty"`
-	Username                     string                         `json:"username,omitempty"`
-	Name                         string                         `json:"name,omitempty"`
-	Password                     string                         `json:"password,omitempty"`
-	Database                     *catalog.Database              `json:"database,omitempty"`
-	Permissions                  []string                       `json:"permissions,omitempty"`
-	BusinessUserID               int64                          `json:"business_user_id,omitempty"`
-	SQL                          string                         `json:"sql,omitempty"`
-	Query                        string                         `json:"query,omitempty"`
-	ID                           string                         `json:"id,omitempty"`
-	Description                  *string                        `json:"description,omitempty"`
-	Summary                      *string                        `json:"summary,omitempty"` // Legacy request alias.
-	Content                      string                         `json:"content,omitempty"`
-	Tables                       []string                       `json:"tables,omitempty"`
-	Published                    bool                           `json:"published,omitempty"`
-	Revision                     int                            `json:"revision,omitempty"`
-	Limit                        int                            `json:"limit,omitempty"`
-	Offset                       int                            `json:"offset,omitempty"`
-	RequestID                    string                         `json:"request_id,omitempty"`
-	Cursor                       string                         `json:"cursor,omitempty"`
+	Parameters     map[string]any                 `json:"parameters,omitempty"`
+	Clone          *catalog.CloneRequest          `json:"clone,omitempty"`
+	AuthConfig     *management.AuthConfig         `json:"auth_config,omitempty"`
+	Arguments      map[string]any                 `json:"arguments,omitempty"`
+	WritePassword  string                         `json:"write_password,omitempty"`
+	ActorID        *int64                         `json:"actor_id,omitempty"`
+	PlatformOnly   bool                           `json:"platform_only,omitempty"`
+	Kind           string                         `json:"kind,omitempty"`
+	Source         string                         `json:"source,omitempty"`
+	Status         string                         `json:"status,omitempty"`
+	Tool           string                         `json:"tool,omitempty"`
+	StartedFrom    string                         `json:"started_from,omitempty"`
+	StartedTo      string                         `json:"started_to,omitempty"`
+	Resolutions    []catalog.AnnotationResolution `json:"resolutions,omitempty"`
+	Table          string                         `json:"table,omitempty"`
+	Column         string                         `json:"column,omitempty"`
+	Annotation     *store.Annotation              `json:"annotation,omitempty"`
+	Account        *management.BusinessAccount    `json:"account,omitempty"`
+	DatabaseID     string                         `json:"database_id,omitempty"`
+	UserID         int64                          `json:"user_id,omitempty"`
+	Username       string                         `json:"username,omitempty"`
+	Name           string                         `json:"name,omitempty"`
+	Password       string                         `json:"password,omitempty"`
+	Database       *catalog.Database              `json:"database,omitempty"`
+	Permissions    []string                       `json:"permissions,omitempty"`
+	BusinessUserID int64                          `json:"business_user_id,omitempty"`
+	SQL            string                         `json:"sql,omitempty"`
+	Query          string                         `json:"query,omitempty"`
+	ID             string                         `json:"id,omitempty"`
+	Description    *string                        `json:"description,omitempty"`
+	Summary        *string                        `json:"summary,omitempty"` // Legacy request alias.
+	Content        string                         `json:"content,omitempty"`
+	Published      bool                           `json:"published,omitempty"`
+	Revision       int                            `json:"revision,omitempty"`
+	Limit          int                            `json:"limit,omitempty"`
+	Offset         int                            `json:"offset,omitempty"`
+	RequestID      string                         `json:"request_id,omitempty"`
+	Cursor         string                         `json:"cursor,omitempty"`
 }
 type Knowledge struct {
-	ID          string   `json:"id"`
-	DatabaseID  string   `json:"database_id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Content     string   `json:"content,omitempty"`
-	Tables      []string `json:"tables,omitempty"`
-	Published   bool     `json:"published"`
-	Revision    int      `json:"revision"`
+	ID          string `json:"id"`
+	DatabaseID  string `json:"database_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Content     string `json:"content,omitempty"`
+	Published   bool   `json:"published"`
+	Revision    int    `json:"revision"`
 }
 
 // Stored records and old clients may still use summary; responses always use description.
@@ -554,23 +551,11 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if in.ID == "" || strings.Contains(in.ID, "/") || in.Name == "" || len(in.Content) > 200000 {
 			return nil, errors.New("需要合法知识 ID、名称，正文最多 200000 字节")
 		}
-		d, e := s.Catalog.Get(in.DatabaseID)
-		if e != nil {
+		if _, e := s.Catalog.Get(in.DatabaseID); e != nil {
 			return nil, e
-		}
-		if d.Config == nil {
-			return nil, errors.New("缺少数据库策略")
-		}
-		if e := d.Config.Validate(); e != nil {
-			return nil, e
-		}
-		for _, t := range in.Tables {
-			if _, ok := d.Config.Lookup(t); !ok {
-				return nil, fmt.Errorf("未知表 %s", t)
-			}
 		}
 		var saved Knowledge
-		e = s.Management.UpdateRecords(ctx, "knowledge", "knowledge.save", in.DatabaseID, func(records []management.Record) ([]management.Record, error) {
+		e := s.Management.UpdateRecords(ctx, "knowledge", "knowledge.save", in.DatabaseID, func(records []management.Record) ([]management.Record, error) {
 			key := in.DatabaseID + "/" + in.ID
 			old := Knowledge{}
 			for _, r := range records {
@@ -591,17 +576,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 			if description != nil {
 				text = *description
 			}
-			tables := in.Tables
-			if tables == nil {
-				tables = old.Tables
-			}
-			if len(old.Tables) > 0 && !reflect.DeepEqual(tables, old.Tables) && !in.ReleaseKnowledgeRestrictions {
-				return nil, errors.New("解除或修改旧知识关联限制需要明确确认")
-			}
-			if in.ReleaseKnowledgeRestrictions {
-				tables = nil
-			}
-			saved = Knowledge{ID: in.ID, DatabaseID: in.DatabaseID, Name: in.Name, Description: text, Content: in.Content, Tables: tables, Published: in.Published, Revision: old.Revision + 1}
+			saved = Knowledge{ID: in.ID, DatabaseID: in.DatabaseID, Name: in.Name, Description: text, Content: in.Content, Published: in.Published, Revision: old.Revision + 1}
 			raw, e := json.Marshal(saved)
 			return []management.Record{{Key: key, Data: string(raw)}}, e
 		})
@@ -621,18 +596,8 @@ func (s *Service) readKnowledge(ctx context.Context, in Input, full, drafts bool
 		if e := guard.Require(ctx, s.Management, in.DatabaseID, "knowledge.read"); e != nil {
 			return nil, e
 		}
-		if e := guard.Require(ctx, s.Management, in.DatabaseID, "query"); e != nil {
-			return nil, e
-		}
 	}
-	d, e := s.Catalog.Get(in.DatabaseID)
-	if e != nil {
-		return nil, e
-	}
-	if d.Config == nil {
-		return nil, errors.New("缺少数据库策略")
-	}
-	if e := d.Config.Validate(); e != nil {
+	if _, e := s.Catalog.Get(in.DatabaseID); e != nil {
 		return nil, e
 	}
 	records, e := s.Management.RecordsForDatabase(ctx, "knowledge", in.DatabaseID)
@@ -653,17 +618,6 @@ func (s *Service) readKnowledge(ctx context.Context, in Input, full, drafts bool
 			continue
 		}
 		if in.ID != "" && k.ID != in.ID {
-			continue
-		}
-		visible := true
-		for _, t := range k.Tables {
-			p, ok := d.Config.Lookup(t)
-			if !ok || (p.Enabled != nil && !*p.Enabled) || p.Columns != nil {
-				visible = false
-				break
-			}
-		}
-		if !drafts && !visible {
 			continue
 		}
 		if in.Query != "" && !matches[r.Key] && !strings.Contains(strings.ToLower(k.Name+" "+k.Description+" "+k.Content), strings.ToLower(in.Query)) {

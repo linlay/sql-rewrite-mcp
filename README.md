@@ -72,7 +72,7 @@ DataScope 自有表使用单数大写下划线名称，字段以 `_` 结尾；�
 | `policy.write` | 修改表、字段、行权限策略 |
 | `mcp.write` | 配置 MCP 地址、基础工具与知识发布开关 |
 | `action.write` | 编写业务 Action、启停独立写入及维护写入账号 |
-| `knowledge.read` | 通过数据库 MCP 检索、读取已发布知识；还需 `query` |
+| `knowledge.read` | 通过数据库 MCP 读取本库全部已发布知识；无需 `query`，不受表策略影响 |
 | `knowledge.write` | 编辑、发布知识 |
 | `query` | 以可信业务身份改写并执行查询 |
 | `raw_query` | 全量只读查询及表数据浏览，绕过行字段策略，需单独授予 |
@@ -181,7 +181,7 @@ SELECT 直接调用 query，使用当前数据库的表、字段与行权限。�
 
 “知识管理”采用左侧列表、右侧编辑和保存，description 使用三行编辑，正文支持 Markdown 预览。业务知识统一通过标准 MCP Prompts 提供：prompts/list 分页返回名称、ID 和完整 description，prompts/get(name) 将同一正文包装为 user 文本消息；无提示词模板参数，不向业务 MCP 发布 search_knowledge/read_knowledge 工具。Resources 留给后续 view。
 
-知识工作台按 prompts/list → 选择 name → prompts/get 展示参数、JSON 与耗时，并支持加载下一页及正文预览。工作台以当前平台的 query 与 knowledge.read 权限模拟；业务 MCP 使用本库业务身份执行同样的发布状态和可见性检查。知识 Prompts 开关与工具开关分别配置。旧知识工具开关兼容映射到知识开关，保存时清理旧工具项。
+知识工作台按 prompts/list → 选择 name → prompts/get 展示参数、JSON 与耗时，并支持加载下一页及正文预览。工作台以当前平台的 knowledge.read 权限模拟；业务 MCP 使用本库业务身份执行同样的发布状态和可见性检查。知识只按数据库归属、发布状态与 knowledge.read 授权，不关联表，也不依赖 query；本库知识读者均可读取已发布的名称、描述与正文。知识 Prompts 开关与工具开关分别配置。旧知识工具开关兼容映射到知识开关，保存时清理旧工具项。
 
 ## 审计与一致性
 

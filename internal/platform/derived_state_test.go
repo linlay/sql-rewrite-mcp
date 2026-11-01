@@ -128,7 +128,7 @@ func TestDerivedStateProcessPeer(t *testing.T) {
 			return
 		}
 		description := "ChangedInAnotherProcess\n第二行"
-		_, err = app.Call(ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "peer-guide", Name: "Guide", Description: &description, Content: "New body", Published: true, Tables: []string{}, Revision: 1})
+		_, err = app.Call(ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "peer-guide", Name: "Guide", Description: &description, Content: "New body", Published: true, Revision: 1})
 		must(t, err)
 		d, err := c.Get("default")
 		must(t, err)
@@ -139,7 +139,7 @@ func TestDerivedStateProcessPeer(t *testing.T) {
 	env := setupRealms(t)
 	f := env.f
 	description := "OldSearchToken"
-	_, err := f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "peer-guide", Name: "Guide", Description: &description, Content: "Old body", Published: true, Tables: []string{}})
+	_, err := f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "peer-guide", Name: "Guide", Description: &description, Content: "Old body", Published: true})
 	must(t, err)
 	tokens, _, _ := employeeTokens(t, env, "default", "employee-default-password")
 	session := connectMCP(t, env.resource+"/default", tokens["access"])

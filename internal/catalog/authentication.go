@@ -63,12 +63,12 @@ func (c *Catalog) BusinessAccount(ctx context.Context, d *Database, username str
 		return a, management.ErrDenied
 	}
 	if d.Authentication != nil && d.Authentication.EmployeeDirectory {
-		svc, e := c.Open(ctx, d)
+		st, e := c.OpenStore(ctx, d)
 		if e != nil {
 			return a, e
 		}
-		defer svc.Store.Close()
-		users, e := svc.Store.Users(ctx)
+		defer st.Close()
+		users, e := st.Users(ctx)
 		if e != nil {
 			return a, e
 		}

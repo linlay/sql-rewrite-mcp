@@ -54,6 +54,9 @@ func businessMiddleware(server *mcp.Server, h handlers) {
 			}
 			ctx = audit.With(ctx, audit.Metadata{RequestID: audit.From(ctx).RequestID, DatabaseID: d.ID, SubjectID: a.BusinessUserID, Source: "business-mcp", Tool: tool, PolicyVersion: d.Revision})
 			permission := "query"
+			if method == "prompts/list" || method == "prompts/get" {
+				permission = "knowledge.read"
+			}
 			if tool == "list_actions" || tool == "describe_action" || tool == "invoke_action" {
 				permission = "action"
 			}
@@ -62,11 +65,6 @@ func businessMiddleware(server *mcp.Server, h handlers) {
 			}
 			if method == "tools/call" || method != "tools/list" && method != "initialize" && method != "notifications/initialized" && method != "ping" {
 				if err = guard.Require(ctx, h.opts.Management, d.ID, permission); err != nil {
-					return nil, err
-				}
-			}
-			if method == "prompts/list" || method == "prompts/get" {
-				if err = guard.Require(ctx, h.opts.Management, d.ID, "knowledge.read"); err != nil {
 					return nil, err
 				}
 			}

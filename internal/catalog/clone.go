@@ -383,19 +383,10 @@ func buildClone(source, target *Database, sourceRecords, targetRecords []managem
 			out.Issues = append(out.Issues, "目标库尚未登记表 "+table.Name+"，请先同步结构")
 		}
 	}
-	if next.Config.Validate() == nil {
-		for _, r := range result {
-			var k cloneKnowledge
-			if err := json.Unmarshal([]byte(r.Data), &k); err != nil {
-				out.Issues = append(out.Issues, "知识记录无效")
-				continue
-			}
-			for _, table := range k.Tables {
-				check(table, "")
-				if _, ok := next.Config.Lookup(table); !ok {
-					out.Issues = append(out.Issues, "知识 "+k.ID+" 引用未登记表 "+table)
-				}
-			}
+	for _, r := range result {
+		var k cloneKnowledge
+		if err := json.Unmarshal([]byte(r.Data), &k); err != nil {
+			out.Issues = append(out.Issues, "知识记录无效")
 		}
 	}
 	if !scope.Knowledge {
@@ -405,14 +396,13 @@ func buildClone(source, target *Database, sourceRecords, targetRecords []managem
 }
 
 type cloneKnowledge struct {
-	ID          string   `json:"id"`
-	DatabaseID  string   `json:"database_id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Content     string   `json:"content"`
-	Tables      []string `json:"tables,omitempty"`
-	Published   bool     `json:"published"`
-	Revision    int      `json:"revision"`
+	ID          string `json:"id"`
+	DatabaseID  string `json:"database_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Content     string `json:"content"`
+	Published   bool   `json:"published"`
+	Revision    int    `json:"revision"`
 }
 
 func checkCloneSQL(ctx context.Context, st *store.Store, query string, actual []store.TableSchema, label string, out *ClonePreview) {

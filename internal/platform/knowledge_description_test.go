@@ -13,7 +13,7 @@ func TestKnowledgeDescriptionDisclosureAndLegacyAlias(t *testing.T) {
 	f := setup(t)
 	text := "第一行：用途与适用范围\n第二行：DescriptionOnlySearchToken 的查询指导\n第三行：指标口径与注意事项"
 	legacy := "legacy must not replace canonical description"
-	in := application.Input{DatabaseID: "default", ID: "description-guide", Name: "Knowledge guide", Description: &text, Summary: &legacy, Content: "FULL_BODY_NOT_IN_LIST", Published: true, Tables: []string{}}
+	in := application.Input{DatabaseID: "default", ID: "description-guide", Name: "Knowledge guide", Description: &text, Summary: &legacy, Content: "FULL_BODY_NOT_IN_LIST", Published: true}
 	_, err := f.app.Call(f.ctx, "save_knowledge", in)
 	must(t, err)
 	for _, action := range []string{"list_knowledge", "search_knowledge"} {

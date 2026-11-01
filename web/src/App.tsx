@@ -91,7 +91,7 @@ export function App() {
 
   const current=items.find(d=>d.id===dbID);
  const can=(p:string)=>user.system_admin||!!current?.permissions?.includes(p);
- const visiblePages=(Object.keys(titles) as Page[]).filter(p=>p==='audit'?(user.system_admin||items.some(d=>d.permissions?.includes('audit.read'))):p==='database'?(user.system_admin||can('config.read')||can('grant')):p==='tables'?can('config.read'):p==='actions'?can('config.read')&&can('action.write'):p==='knowledge'?can('knowledge.write'):p==='knowledge-workbench'?can('query')&&can('knowledge.read'):p==='action-workbench'?can('action.write'):p==='table'?can('raw_query'):p==='sql'?can('query'):(can('mcp.write')||can('action.write')));
+ const visiblePages=(Object.keys(titles) as Page[]).filter(p=>p==='audit'?(user.system_admin||items.some(d=>d.permissions?.includes('audit.read'))):p==='database'?(user.system_admin||can('config.read')||can('grant')):p==='tables'?can('config.read'):p==='actions'?can('config.read')&&can('action.write'):p==='knowledge'?can('knowledge.write'):p==='knowledge-workbench'?can('knowledge.read'):p==='action-workbench'?can('action.write'):p==='table'?can('raw_query'):p==='sql'?can('query'):(can('mcp.write')||can('action.write')));
  const navigationItems: NonNullable<MenuProps['items']> = [];
  navigationGroups.forEach((group, index) => {
   const pages = group.filter(page => visiblePages.includes(page));

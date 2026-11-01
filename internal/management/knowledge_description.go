@@ -28,6 +28,7 @@ func canonicalKnowledgeJSON(raw string) (string, error) {
 	}
 	fields["description"], _ = json.Marshal(description)
 	delete(fields, "summary")
+	delete(fields, "tables")
 	data, err := json.Marshal(fields)
 	return string(data), err
 }

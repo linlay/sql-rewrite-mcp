@@ -1,19 +1,45 @@
 package management
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 )
 
 // compactDerivedYAML is called only by the explicit offline upgrade command.
 // It upgrades field names and cleans early operational scan data, keeping an
-// exact one-time backup and preserving the formal revision.
+// exact one-time backup and preserving the database revision. Removing retired
+// knowledge table restrictions increments the affected knowledge revisions.
 func compactDerivedYAML(path, backup string, st *sourceState) (bool, error) {
 	var root map[string]any
 	if err := readMigrationDocument(filepath.Join(path, "database.yml"), &root); err != nil {
 		return false, err
 	}
 	_, dirty := root["records"]
+	// Knowledge is published to every knowledge reader in its database. Retire
+	// table restrictions once during the offline upgrade, preserving publication.
+	for i, record := range st.Records["knowledge"] {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(record.Data), &fields); err != nil {
+			return false, err
+		}
+		if _, exists := fields["tables"]; exists {
+			var revision int
+			if raw := fields["revision"]; raw != nil {
+				if err := json.Unmarshal(raw, &revision); err != nil {
+					return false, err
+				}
+			}
+			delete(fields, "tables")
+			fields["revision"], _ = json.Marshal(revision + 1)
+			raw, err := json.Marshal(fields)
+			if err != nil {
+				return false, err
+			}
+			st.Records["knowledge"][i].Data = string(raw)
+			dirty = true
+		}
+	}
 	// The full generation has already passed migration decoding. A canonical
 	// read failure here means an old spelling needs to be rewritten.
 	if err := filepath.WalkDir(path, func(file string, entry os.DirEntry, err error) error {

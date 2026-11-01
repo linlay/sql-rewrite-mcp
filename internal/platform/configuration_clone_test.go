@@ -33,6 +33,24 @@ func cloneTarget(t *testing.T, f *fixture, ddl string) *catalog.Database {
 	return d
 }
 
+func TestKnowledgeCloneDoesNotRequireMatchingTables(t *testing.T) {
+	f := setup(t)
+	cloneTarget(t, f, "CREATE TABLE invoices(id INTEGER PRIMARY KEY)")
+	_, err := f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "guide", Name: "Guide", Content: "A guide may discuss items without requiring that table", Published: true})
+	must(t, err)
+	preview := clonePreview(t, f, catalog.CloneRequest{SourceDatabaseID: "default", Scope: &catalog.CloneScope{Knowledge: true}})
+	if len(preview.Issues) != 0 {
+		t.Fatal(preview.Issues)
+	}
+	must(t, cloneCommit(f, cloneConfirmed(preview)))
+	result, err := f.app.Call(f.ctx, "get_knowledge", application.Input{DatabaseID: "target", ID: "guide"})
+	must(t, err)
+	knowledge := result.(application.Knowledge)
+	if knowledge.DatabaseID != "target" || !knowledge.Published || knowledge.Content != "A guide may discuss items without requiring that table" {
+		t.Fatal(knowledge)
+	}
+}
+
 func prepareClone(t *testing.T, f *fixture) *catalog.Database {
 	t.Helper()
 	d := cloneTarget(t, f, `CREATE TABLE items(id INTEGER PRIMARY KEY,owner_id INTEGER,name TEXT,secret TEXT); INSERT INTO items VALUES(99,99,'target data','private'); CREATE TABLE target_only(id INTEGER);`)
@@ -50,9 +68,9 @@ func prepareClone(t *testing.T, f *fixture) *catalog.Database {
 	comment := "Cloned comment"
 	_, err = f.c.SaveAnnotation(f.ctx, "default", "items", "name", source.Revision, store.Annotation{DisplayName: "Cloned name", Comment: &comment})
 	must(t, err)
-	_, err = f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "guide", Name: "Guide", Content: "multi\nline", Tables: []string{"items"}, Published: true})
+	_, err = f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "guide", Name: "Guide", Content: "multi\nline", Published: true})
 	must(t, err)
-	_, err = f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: d.ID, ID: "old", Name: "Old", Content: "target only", Tables: []string{"items"}})
+	_, err = f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: d.ID, ID: "old", Name: "Old", Content: "target only"})
 	must(t, err)
 	_, err = f.m.SaveBusinessAccount(f.ctx, management.BusinessAccount{DatabaseID: d.ID, Username: "own", Name: "Own", BusinessUserID: 99, Active: true, Permissions: []string{"query"}}, "own-account-password", 0)
 	must(t, err)

@@ -136,13 +136,19 @@ func PlatformHandler(app *application.Service, next http.Handler) http.Handler {
 		}
 		if r.URL.Path == "/api/management/call" && r.Method == "POST" {
 			var in struct {
-				Action    string            `json:"action"`
-				Arguments application.Input `json:"arguments"`
+				Action    string          `json:"action"`
+				Arguments json.RawMessage `json:"arguments"`
 			}
-			if !decode(w, r, &in) {
+			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&in); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "管理参数无效: " + err.Error()})
 				return
 			}
-			out, e := app.Call(ctx, in.Action, in.Arguments)
+			arguments, e := application.DecodeInput(in.Arguments)
+			if e != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "管理参数无效: " + e.Error()})
+				return
+			}
+			out, e := app.Call(ctx, in.Action, arguments)
 			if e != nil {
 				platformError(w, e)
 				return

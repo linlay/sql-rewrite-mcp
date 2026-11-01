@@ -114,13 +114,9 @@ func run() error {
 		if e != nil {
 			return e
 		}
-		svc, e := catalogue.Open(ctx, initial)
-		if e != nil {
-			return e
-		}
-		defer svc.Store.Close()
-		logger.Info("serving MCP over stdio", "db", st.Path(), "default_user_id", *defaultUserID)
-		return mcpserver.ManagedServer(catalogue, *databaseID, svc, opts).Run(ctx, &mcp.StdioTransport{})
+		opts.DatabaseDriver = initial.Driver
+		logger.Info("serving MCP over stdio", "database_id", initial.ID, "default_user_id", *defaultUserID)
+		return mcpserver.ManagedServer(catalogue, *databaseID, nil, opts).Run(ctx, &mcp.StdioTransport{})
 	case "http":
 		handler, err := mcpserver.ManagedHTTPHandler(catalogue, st, opts, authMode, issuer, resource, *path)
 		if err != nil {

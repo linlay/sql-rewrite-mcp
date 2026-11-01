@@ -10,6 +10,7 @@ func TestCanonicalKnowledgeDescription(t *testing.T) {
 		{`{"name":"Guide","summary":"First\nSecond","revision":7}`, "First\nSecond"},
 		{`{"description":"","summary":"DoNotResurrect"}`, ""},
 		{`{"description":"Current","summary":"Old"}`, "Current"},
+		{`{"description":"Guide","tables":["items"],"published":true}`, "Guide"},
 	} {
 		data, err := canonicalKnowledgeJSON(tc.raw)
 		if err != nil {
@@ -24,6 +25,9 @@ func TestCanonicalKnowledgeDescription(t *testing.T) {
 		}
 		if _, old := record["summary"]; old {
 			t.Fatal("legacy summary retained")
+		}
+		if _, old := record["tables"]; old {
+			t.Fatal("retired knowledge table restrictions retained")
 		}
 	}
 }

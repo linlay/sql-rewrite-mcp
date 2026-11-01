@@ -21,7 +21,9 @@ func TestRejectInvalidManagementArguments(t *testing.T) {
 		{"missing revision", "datascope_manage", `{"action":"save","args":{"resourceType":"mcp","database_id":"one","database":{"id":"one"}}}`},
 		{"missing replacement permissions", "datascope_manage", `{"action":"grant","args":{"resourceType":"grant","database_id":"default","user_id":42,"business_user_id":0}}`},
 		{"missing identity binding", "datascope_manage", `{"action":"grant","args":{"resourceType":"grant","database_id":"default","user_id":42,"permissions":[]}}`},
-		{"missing publish intent", "datascope_manage", `{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"note","name":"Note","summary":"","content":"","tables":[],"revision":0}}`},
+		{"missing publish intent", "datascope_manage", `{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"note","name":"Note","summary":"","content":"","revision":0}}`},
+		{"retired knowledge tables", "datascope_manage", `{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"note","name":"Note","description":"","content":"","tables":["items"],"published":true,"revision":0}}`},
+		{"retired knowledge release flag", "datascope_manage", `{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"note","name":"Note","description":"","content":"","release_knowledge_restrictions":true,"published":true,"revision":0}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var in input
@@ -37,11 +39,11 @@ func TestRejectInvalidManagementArguments(t *testing.T) {
 
 func TestExplicitEmptyReplacementValues(t *testing.T) {
 	var in input
-	if err := json.Unmarshal([]byte(`{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"note","name":"Note","summary":"","content":"","tables":[],"published":false,"revision":0}}`), &in); err != nil {
+	if err := json.Unmarshal([]byte(`{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"note","name":"Note","summary":"","content":"","published":false,"revision":0}}`), &in); err != nil {
 		t.Fatal(err)
 	}
 	action, out, err := decode("datascope_manage", in)
-	if err != nil || action != "save_knowledge" || out.Published || out.Revision != 0 || out.Tables == nil {
+	if err != nil || action != "save_knowledge" || out.Published || out.Revision != 0 {
 		t.Fatalf("draft values lost: %s %+v %v", action, out, err)
 	}
 	in = input{}
@@ -128,7 +130,7 @@ func TestAuditPageAcceptsFiltersAndRejectsInvalidTypes(t *testing.T) {
 func TestKnowledgeDescriptionArgumentsAndLegacyAlias(t *testing.T) {
 	for _, text := range []string{`"description":"first\nsecond\nthird"`, `"summary":"first\nsecond\nthird"`, `"description":"","summary":"legacy"`} {
 		var in input
-		raw := `{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"guide","name":"Guide",` + text + `,"content":"Body","tables":[],"published":true,"revision":0}}`
+		raw := `{"action":"save","args":{"resourceType":"knowledge","database_id":"default","id":"guide","name":"Guide",` + text + `,"content":"Body","published":true,"revision":0}}`
 		if err := json.Unmarshal([]byte(raw), &in); err != nil {
 			t.Fatal(err)
 		}

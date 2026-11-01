@@ -48,44 +48,66 @@ func TestWorkbenchSQLParametersAndIndependentRawPermission(t *testing.T) {
 	}
 }
 
-func TestKnowledgeLegacyRestrictionsRequireExplicitRelease(t *testing.T) {
+func TestKnowledgeReadPermissionIsIndependentOfQueryPolicies(t *testing.T) {
 	f := setup(t)
-	_, err := f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "legacy", Name: "Legacy", Content: "secret", Tables: []string{"items"}, Published: true})
+	must(t, f.m.SaveGrant(f.ctx, f.admin.ID, management.Grant{UserID: f.reader.ID, DatabaseID: "default", Permissions: []string{"knowledge.read"}}))
+	_, err := f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "guide", Name: "Guide", Content: "How to use items", Published: true})
 	must(t, err)
 	d, err := f.c.Get("default")
 	must(t, err)
+	off := false
+	d.Config.Tables[0].Enabled = &off
 	d.Config.Tables[0].Columns = []string{"id"}
 	must(t, f.c.Save(f.ctx, *d))
-	in := application.Input{DatabaseID: "default", ID: "legacy"}
-	if _, err = f.app.ReadKnowledge(f.readerContext(), in, true, false); err == nil {
-		t.Fatal("restricted knowledge leaked")
-	}
-	// Old clients omitting tables must preserve the restriction.
-	save := application.Input{DatabaseID: "default", ID: "legacy", Name: "Edited", Content: "secret", Published: true, Revision: 1}
-	out, err := f.app.Call(f.ctx, "save_knowledge", save)
+	in := application.Input{DatabaseID: "default", ID: "guide"}
+	out, err := f.app.ReadKnowledge(f.readerContext(), in, true, false)
 	must(t, err)
-	if !reflect.DeepEqual(out.(application.Knowledge).Tables, []string{"items"}) {
-		t.Fatal("ordinary save removed restrictions")
+	if out.(application.Knowledge).Content != "How to use items" {
+		t.Fatal(out)
 	}
-	save.Revision = 2
-	save.Tables = []string{}
-	if _, err = f.app.Call(f.ctx, "save_knowledge", save); err == nil {
-		t.Fatal("silent release accepted")
+	if _, err = f.app.Call(f.readerContext(), "preview_rewrite", application.Input{DatabaseID: "default", SQL: "SELECT id FROM items"}); err == nil {
+		t.Fatal("knowledge permission granted query access")
 	}
-	save.ReleaseKnowledgeRestrictions = true
+	save := application.Input{DatabaseID: "default", ID: "guide", Name: "Edited", Content: "Updated guide", Published: true, Revision: 1}
 	if _, err = f.app.Call(f.readerContext(), "save_knowledge", save); err == nil {
-		t.Fatal("reader released restrictions")
+		t.Fatal("knowledge reader edited content")
 	}
 	_, err = f.app.Call(f.ctx, "save_knowledge", save)
 	must(t, err)
 	out, err = f.app.ReadKnowledge(f.readerContext(), in, true, false)
 	must(t, err)
-	if out.(application.Knowledge).Content != "secret" {
+	if out.(application.Knowledge).Content != "Updated guide" {
 		t.Fatal(out)
 	}
 	in.DatabaseID = "other"
 	if _, err = f.app.ReadKnowledge(f.readerContext(), in, true, false); err == nil {
 		t.Fatal("cross-database read")
+	}
+	in.DatabaseID = "default"
+	must(t, f.m.SaveGrant(f.ctx, f.admin.ID, management.Grant{UserID: f.reader.ID, DatabaseID: "default", Permissions: []string{"query"}}))
+	if _, err = f.app.ReadKnowledge(f.readerContext(), in, true, false); err == nil {
+		t.Fatal("query permission granted knowledge access")
+	}
+}
+
+func TestKnowledgeHTTPRejectsRetiredRestrictions(t *testing.T) {
+	f := setup(t)
+	server := api(t, f)
+	client := login(t, server.URL, "admin", "admin-test-password")
+	for _, key := range []string{"tables", "release_knowledge_restrictions"} {
+		args := map[string]any{"database_id": "default", "id": "guide", "name": "Guide", "content": "Body", "published": true, "revision": 0}
+		if key == "tables" {
+			args[key] = []string{"items"}
+		} else {
+			args[key] = true
+		}
+		status, raw := request(t, client, "POST", server.URL+"/api/management/call", map[string]any{"action": "save_knowledge", "arguments": args})
+		if status != http.StatusBadRequest || !strings.Contains(string(raw), key+" 已移除") {
+			t.Fatalf("retired %s accepted: %d %s", key, status, raw)
+		}
+	}
+	if _, err := f.app.Call(f.ctx, "get_knowledge", application.Input{DatabaseID: "default", ID: "guide"}); err == nil {
+		t.Fatal("rejected knowledge save wrote a record")
 	}
 }
 

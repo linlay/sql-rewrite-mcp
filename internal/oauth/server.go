@@ -815,7 +815,7 @@ func (s *Server) userResourceAllowed(ctx context.Context, id int64, resource str
 			return false
 		}
 		a, e := s.cfg.Catalog.BusinessAccount(ctx, d, account.Username)
-		return e == nil && (slices.Contains(a.Permissions, "query") || slices.Contains(a.Permissions, "action"))
+		return e == nil && (slices.Contains(a.Permissions, "query") || slices.Contains(a.Permissions, "action") || slices.Contains(a.Permissions, "knowledge.read"))
 	}
 	if s.cfg.Management == nil {
 		return true

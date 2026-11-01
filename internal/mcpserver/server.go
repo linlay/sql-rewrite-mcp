@@ -34,9 +34,11 @@ type Options struct {
 	Application *application.Service
 	Management  *management.Store
 	DatabaseID  string
-	AuthMode    string
-	Managed     bool
-	Tools       []string
+	// DatabaseDriver provides the dialect without opening a query connection.
+	DatabaseDriver string
+	AuthMode       string
+	Managed        bool
+	Tools          []string
 	// IdentityStore is the shared trusted employee directory for all data sources.
 	IdentityStore *store.Store
 	// UserHeader carries the trusted user id, set by the gateway in front of
@@ -62,13 +64,17 @@ func New(svc *service.QueryService, opts Options) *mcp.Server {
 	}
 	title, guidance := "证券业务 SQL 查询（权限改写）", instructions
 	dialectLabel := "SQLite 方言"
-	if svc != nil && svc.Store.Driver() != "sqlite" {
-		dialectLabel = "受限 SELECT 子集，后端 " + svc.Store.Driver()
+	driver := opts.DatabaseDriver
+	if svc != nil {
+		driver = svc.Store.Driver()
+	}
+	if driver != "" && driver != "sqlite" {
+		dialectLabel = "受限 SELECT 子集，后端 " + driver
 	}
 	if opts.Managed {
 		title = "SQL 数据库代理"
 		guidance = "使用" + dialectLabel + "。先通过 list_tables 查看可访问表，再通过 describe_table 查看可访问字段，最后通过 query 执行只读 SQL。查询按当前身份应用表访问、字段白名单、行权限改写和每表返回行数上限。接口是否提供由当前数据库配置决定。"
-		if svc != nil && svc.Store.Driver() != "sqlite" {
+		if driver != "" && driver != "sqlite" {
 			guidance += " 支持常用聚合、子查询、非递归 CTE、整数 LIMIT/OFFSET；不支持窗口函数、CAST、自定义函数、原生专有语法或跨 schema 查询。使用结构返回的字段名与显式表别名。"
 		}
 	}

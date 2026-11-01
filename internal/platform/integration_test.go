@@ -400,7 +400,7 @@ func TestOAuthMCPManagementKnowledgeAndLiveRevocation(t *testing.T) {
 		t.Fatal("accepted unknown parameter")
 	}
 	knowledgeDescription1 := "Ownership rules\nScope and applicable questions\nDetailed model guidance"
-	_, e = f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "items", Name: "Items owner", Description: &knowledgeDescription1, Content: "Query items by owner_id; never sum duplicated joins.", Tables: []string{"items"}, Published: true})
+	_, e = f.app.Call(f.ctx, "save_knowledge", application.Input{DatabaseID: "default", ID: "items", Name: "Items owner", Description: &knowledgeDescription1, Content: "Query items by owner_id; never sum duplicated joins.", Published: true})
 	must(t, e)
 	prompts, e := session.ListPrompts(ctx, nil)
 	must(t, e)
@@ -595,7 +595,7 @@ func TestDirectSQLReplacesNamedTools(t *testing.T) {
 func TestKnowledgeVisibilityAndConflict(t *testing.T) {
 	f := setup(t)
 	knowledgeDescription2 := "Only owned items"
-	in := application.Input{DatabaseID: "default", ID: "owner-guide", Name: "Owner guide", Description: &knowledgeDescription2, Content: "Query owner_id in items", Tables: []string{"items"}}
+	in := application.Input{DatabaseID: "default", ID: "owner-guide", Name: "Owner guide", Description: &knowledgeDescription2, Content: "Query owner_id in items"}
 	_, e := f.app.Call(f.ctx, "save_knowledge", in)
 	must(t, e)
 	_, e = f.app.Call(f.readerContext(), "read_knowledge", application.Input{DatabaseID: "default", ID: in.ID})
@@ -617,9 +617,7 @@ func TestKnowledgeVisibilityAndConflict(t *testing.T) {
 	d.Config.Tables[0].Columns = []string{"id", "name"}
 	must(t, f.c.Save(f.ctx, *d))
 	_, e = f.app.Call(f.readerContext(), "read_knowledge", application.Input{DatabaseID: "default", ID: in.ID})
-	if e == nil {
-		t.Fatal("knowledge exposing restricted fields still visible")
-	}
+	must(t, e)
 }
 
 func assertNoBusinessSQLite(t *testing.T, f *fixture, id string) {

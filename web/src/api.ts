@@ -299,7 +299,7 @@ export const api = {
 export interface KnowledgePrompt {name:string;title:string;description:string}
 export interface KnowledgePrompts {prompts:KnowledgePrompt[];nextCursor?:string}
 export interface KnowledgePromptResult {description:string;messages:{role:string;content:{type:string;text:string}}[]}
-export interface Knowledge {id:string;database_id:string;name:string;description:string;content?:string;tables?:string[];published:boolean;revision:number}
+export interface Knowledge {id:string;database_id:string;name:string;description:string;content?:string;published:boolean;revision:number}
 
 export interface AuditEvent {id:string;request_id:string;actor_id:number;subject_id:number;database_id:string;source:string;tool:string;kind:string;status:string;original_sql?:string;rewritten_sql?:string;executed_sql?:string;binds?:unknown;error?:string;started_at:string;finished_at?:string;rows:number;truncated:boolean;detail?:unknown;policy_version:number}
 export interface AuditFilters {database_id?:string;platform_only?:boolean;request_id?:string;actor_id?:number;kind?:string;source?:string;status?:string;tool?:string;query?:string;started_from?:string;started_to?:string}

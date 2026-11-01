@@ -228,6 +228,6 @@ func publishGuide(ctx context.Context, app *application.Service, id string, b Bu
 	}
 	text.WriteString("最新演示账期以查询结果为准，初始数据为 2026-10-20。不要修改历史成交、角色、管理范围、交易日历；结构说明通过管理元数据维护。测试证券账户新增时先选择没有历史委托的账户删除，再新增，不能删除已被引用的账户。客户资料、冻结解冻、订单元数据不修改账务；资金操作同步维护流水与日结；价格更正同步重估该证券最新日全部持仓。")
 	knowledgeDescription1 := "18 种可修改操作、角色范围、参数格式、最新账期记账和人工确认流程"
-	_, e = app.Call(ctx, "save_knowledge", application.Input{DatabaseID: id, ID: key, Name: "证券演示 Action 操作案例", Description: &knowledgeDescription1, Content: text.String(), Tables: []string{"customers", "fund_accounts", "employees", "branches", "departments", "securities", "orders", "stock_accounts", "daily_balances", "cash_flows", "daily_quotes", "positions"}, Published: true})
+	_, e = app.Call(ctx, "save_knowledge", application.Input{DatabaseID: id, ID: key, Name: "证券演示 Action 操作案例", Description: &knowledgeDescription1, Content: text.String(), Published: true})
 	return e
 }

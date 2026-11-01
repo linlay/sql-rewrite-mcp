@@ -58,17 +58,12 @@ func ManagedHTTPHandler(c *catalog.Catalog, identity *store.Store, opts Options,
 			http.Error(w, "该数据库未开启 MCP", 403)
 			return
 		}
-		svc, err := c.Open(r.Context(), d)
-		if err != nil {
-			http.Error(w, err.Error(), 503)
-			return
-		}
-		defer svc.Store.Close()
 		selected := opts
 		selected.Catalog = c
 		selected.IdentityStore = identity
 		selected.Tools = d.Tools
 		selected.DatabaseID = d.ID
+		selected.DatabaseDriver = d.Driver
 		selected.Managed = true
 		endpoint := path
 		if segment != "" {
@@ -98,7 +93,9 @@ func ManagedHTTPHandler(c *catalog.Catalog, identity *store.Store, opts Options,
 			}
 		}
 		selected.AuthMode = authMode
-		h, err := HTTPHandlerWithManagement(New(svc, selected), svc.Store, authMode, endpointIssuer, endpointResource, endpoint, true, opts.Management, d.ID, c)
+		// Open a query service only for tool calls. Knowledge Prompts and protocol
+		// discovery do not depend on query policies or a live data connection.
+		h, err := HTTPHandlerWithManagement(ManagedServer(c, d.ID, nil, selected), identity, authMode, endpointIssuer, endpointResource, endpoint, true, opts.Management, d.ID, c)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
