@@ -8,6 +8,7 @@ import { useAuth } from '../Auth';
 import { TablePolicyEditor } from './DatabaseManager';
 import { setAllTableAccess } from '../tableAccess';
 import { IconButton } from '../components/IconButton';
+import { navigate, selectResource, useNavigationBlocker, useRoute } from '../navigation';
 
 const { Text } = Typography;
 const kinds = { added: '新增', removed: '删除', modified: '修改' };
@@ -17,9 +18,10 @@ const changeKey = (change:SchemaChange) => JSON.stringify([change.table,change.c
 
 export function DiscoveryPage({ id, onSaved }: {id:string;onSaved:()=>void}) {
  const t=useI18n();
+ const route=useRoute();
  const { user } = useAuth();
  const [db,setDB] = useState<Database>();
- const [active,setActive] = useState<string>();
+ const [active,setActive] = useState<string | undefined>(route.selection);
  const [search,setSearch] = useState('');
  const [error,setError] = useState<string>();
  const [busy,setBusy] = useState(false);
@@ -29,9 +31,16 @@ export function DiscoveryPage({ id, onSaved }: {id:string;onSaved:()=>void}) {
  const [comparison,setComparison] = useState<'pending'|'history'>();
  const [choices,setChoices] = useState<Record<string,boolean>>({});
  const [editor,setEditor] = useState<{table:string;column:string;source:string;annotation:Annotation}>();
+ useNavigationBlocker(dirty,t('当前配置尚未保存，确定离开？'),busy);
+ useEffect(()=>{
+  if(!db)return;
+  const tables=db.discovery?.tables??[];
+  const selected=tables.find(table=>table.name===route.selection)?.name??tables[0]?.name;
+  setActive(selected);
+  if(selected!==route.selection)selectResource(selected,true);
+ },[db,route.selection]);
  const accept = (d:Database) => {
   setDB(d);setDirty(false);setRemoteChanged(false);
-  setActive(previous=>d.discovery?.tables?.some(tableInfo=>tableInfo.name===previous)?previous:d.discovery?.tables?.[0]?.name);
  };
  useEffect(()=>{let live=true;databases.get(id).then(d=>{if(live)accept(d)}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[id]);
  // Background detection can surface a proposal while an administrator is on
@@ -109,13 +118,13 @@ export function DiscoveryPage({ id, onSaved }: {id:string;onSaved:()=>void}) {
     <IconButton label={t('保存')} icon={<SaveOutlined/>} type="primary" loading={busy} disabled={!dirty||!can('policy.write')} onClick={()=>void save()}/>
    </Space>}>
     <Input.Search className="discovery-table-search" aria-label={t('搜索数据表')} placeholder={t('表名、名称或说明')} value={search} onChange={e=>setSearch(e.target.value)} allowClear/>
-    <Table<TableSchema> rowKey="name" size="small" dataSource={visibleTables} pagination={false} scroll={{x:330}} onRow={tableInfo=>({onClick:()=>setActive(tableInfo.name),style:{cursor:'pointer',background:tableInfo.name===active?'rgba(0,113,227,.08)':undefined}})} columns={[
+    <Table<TableSchema> rowKey="name" size="small" dataSource={visibleTables} pagination={false} scroll={{x:330}} onRow={tableInfo=>({onClick:()=>{setActive(tableInfo.name);selectResource(tableInfo.name)},style:{cursor:'pointer',background:tableInfo.name===active?'rgba(0,113,227,.08)':undefined}})} columns={[
      {title:<span className="discovery-table-name-header"><span>{t('数据表 / 名称')}</span><Tooltip title={<>{t('显示 {visible} / {total} 张表',{visible:visibleTables.length,total:tables.length})}<br/>{t('{tables} 张表 · 已开放 {enabled}',{tables:tables.length,enabled:enabledTableCount})}<br/>{t('{fields} 个字段 · 最近检查：{time}',{fields:tables.reduce((count,table)=>count+table.columns.length,0),time:date(state?.checked_at)||t('尚未检查')})}</>}><Text type="secondary" className="discovery-table-count" aria-label={t('显示 {visible} / {total} 张表',{visible:visibleTables.length,total:tables.length})}>{visibleTables.length===tables.length?tables.length:`${visibleTables.length} / ${tables.length}`}</Text></Tooltip></span>,render:(_,tableInfo)=>{const a=state?.annotations?.[tableInfo.name];return <><Text>{a?.display_name||tableInfo.name}</Text><div><Text type="secondary">{(a?.comment??tableInfo.comment)||t("（空）")}</Text></div></>}},
      {title:t("字段"),render:(_,tableInfo)=>tableInfo.columns.length,width:55},
      {title:<Tooltip title={`${t(allTablesEnabled?'全部关闭':'全部开放')}：${t('作用于当前数据库的全部已登记表，保存后生效。')}`}><Checkbox className="discovery-table-access-header" aria-label={t('全部表开放')} checked={allTablesEnabled} indeterminate={enabledTableCount>0&&!allTablesEnabled} disabled={busy||!can('policy.write')||tables.length===0} onChange={e=>setAllEnabled(e.target.checked)}>{t('开放')}</Checkbox></Tooltip>,width:80,render:(_,tableInfo)=><Switch size="small" aria-label={t("开放表 {0}", {"0":(tableInfo.name)})} disabled={busy||!can('policy.write')} checked={db.config.tables.find(p=>p.table.toLowerCase()===tableInfo.name.toLowerCase())?.enabled!==false} onClick={(_,e)=>e.stopPropagation()} onChange={enabled=>setPolicy(tableInfo.name,{enabled})}/>},
     ]}/>
    </Card></Col>
-   <Col xs={24} xl={16}><Card title={current?t("表与字段 · {0}", {"0":(annotation?.display_name||current.name)}):t("选择数据表")} extra={current&&<Space><Button aria-label={t("编辑表名称与注释")} disabled={busy||dirty||!can('config.write')} onClick={()=>editAnnotation(current.name,'',current.comment,annotation)}>{t("编辑")}</Button>{can('raw_query')&&<Button onClick={()=>{window.location.hash=`#/table/${encodeURIComponent(current.name)}`}}>{t("浏览数据")}</Button>}</Space>}>
+   <Col xs={24} xl={16}><Card title={current?t("表与字段 · {0}", {"0":(annotation?.display_name||current.name)}):t("选择数据表")} extra={current&&<Space><Button aria-label={t("编辑表名称与注释")} disabled={busy||dirty||!can('config.write')} onClick={()=>editAnnotation(current.name,'',current.comment,annotation)}>{t("编辑")}</Button>{can('raw_query')&&<Button onClick={()=>{navigate('table',current.name)}}>{t("浏览数据")}</Button>}</Space>}>
     {current&&<Space orientation="vertical" size="middle" style={{width:'100%'}}>
      <Descriptions size="small" column={{xs:1,md:2}} items={[
       {key:'name',label:t("名称"),children:annotation?.display_name||current.name},

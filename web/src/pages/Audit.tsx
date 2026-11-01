@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import dayjs from 'dayjs';
 import { Alert, Button, Card, Col, Collapse, DatePicker, Descriptions, Empty, Form, Input, Row, Select, Space, Table, Tag, Typography } from 'antd';
 import { managementCall, type AuditEvent, type AuditFilters, type AuditResult, type Database } from '../api';
 import { useAuth } from '../Auth';
 import { useI18n } from '../ui/preferences';
+import { selectResource, setRouteParams, useRoute, useRouteChoice } from '../navigation';
 
 interface FilterForm {
  database?:string;actor_id?:number;kind?:string;source?:string;status?:string;tool?:string;request_id?:string;query?:string;
@@ -15,14 +17,45 @@ const kindLabels:Record<string,string>={'http.request':'后台请求','mcp.reque
 export function AuditPage({databases}:{databases:Database[]}){
  const t=useI18n();
  const {user}=useAuth();
+ const route=useRoute();
  const allowed=databases.filter(db=>user.system_admin||db.permissions?.includes('audit.read'));
  const defaultScope=user.system_admin?'':allowed[0]?.id??'';
  const [form]=Form.useForm<FilterForm>();
- const [query,setQuery]=useState<{filters:AuditFilters;page:number;size:number;refresh:number}>(()=>({filters:defaultScope?{database_id:defaultScope}:{},page:1,size:50,refresh:0}));
+ const [refresh,setRefresh]=useState(0);
+ const routeQuery=route.params.toString();
+ const query=useMemo(()=>{
+  const params=new URLSearchParams(routeQuery);
+  const filters:AuditFilters={};
+  const scope=params.get('scope')??defaultScope;
+  if(scope==='__platform__'&&user.system_admin)filters.platform_only=true;
+  else if(scope)filters.database_id=allowed.some(db=>db.id===scope)?scope:defaultScope||undefined;
+  else if(!user.system_admin&&defaultScope)filters.database_id=defaultScope;
+  for(const key of ['kind','source','status','tool'] as const){const value=params.get(key);if(value)filters[key]=value;}
+  if(params.get('requestId'))filters.request_id=params.get('requestId')!;
+  if(params.get('q'))filters.query=params.get('q')!;
+  const actor=Number(params.get('actorId'));
+  if(params.has('actorId')&&Number.isSafeInteger(actor)&&actor>=0)filters.actor_id=actor;
+  for(const [urlKey,key] of [['from','started_from'],['to','started_to']] as const){const value=params.get(urlKey);if(value&&dayjs(value).isValid())filters[key]=dayjs(value).toISOString();}
+  const page=Number(params.get('page')),size=Number(params.get('size'));
+  return {filters,page:Number.isSafeInteger(page)&&page>0?page:1,size:[20,50,100,200].includes(size)?size:50,refresh};
+ },[routeQuery,defaultScope,databases,user.system_admin,refresh]);
+ const setQuery=(update:(previous:typeof query)=>typeof query)=>{
+  const next=update(query),filters=next.filters;
+  if(next.refresh!==query.refresh)setRefresh(next.refresh);
+  setRouteParams({scope:filters.platform_only?'__platform__':filters.database_id||undefined,status:filters.status,kind:filters.kind,source:filters.source,tool:filters.tool,requestId:filters.request_id,actorId:filters.actor_id===undefined?undefined:String(filters.actor_id),q:filters.query,from:filters.started_from,to:filters.started_to,page:next.page===1?undefined:String(next.page),size:next.size===50?undefined:String(next.size)},false,true);
+  selectResource(undefined,true);
+ };
  const [result,setResult]=useState<AuditResult>();
  const [error,setError]=useState<string>();
  const [busy,setBusy]=useState(false);
- const [advanced,setAdvanced]=useState(false);
+ const [advancedView,setAdvancedView]=useRouteChoice('advanced','closed',['closed','open']);
+ const advanced=advancedView==='open';
+ const appliedFilterKey=JSON.stringify(query.filters);
+ useEffect(()=>{
+  const filters=query.filters;
+  form.resetFields();
+  form.setFieldsValue({database:filters.platform_only?'__platform__':filters.database_id||defaultScope,status:filters.status,actor_id:filters.actor_id,kind:filters.kind,source:filters.source,tool:filters.tool,request_id:filters.request_id,query:filters.query,range:filters.started_from&&filters.started_to?[dayjs(filters.started_from),dayjs(filters.started_to)]:undefined});
+ },[appliedFilterKey,defaultScope]);
  const sequence=useRef(0);
  useEffect(()=>{
   const current=++sequence.current;
@@ -66,7 +99,7 @@ export function AuditPage({databases}:{databases:Database[]}){
      <Col xs={24} lg={8}><Form.Item name="range" label={t('时间范围')}><DatePicker.RangePicker showTime style={{width:'100%'}} format="YYYY-MM-DD HH:mm:ss" placeholder={[t('开始时间'),t('结束时间')]}/></Form.Item></Col>
      <Col xs={24} lg={6}><Form.Item name="query" label={t('关键词')}><Input aria-label={t('筛选关键词')} placeholder={t('搜索 SQL、错误或操作详情')} allowClear maxLength={300}/></Form.Item></Col>
     </Row>
-    <Collapse ghost activeKey={advanced?['filters']:[]} onChange={keys=>setAdvanced(keys.includes('filters'))} items={[{
+    <Collapse ghost activeKey={advanced?['filters']:[]} onChange={keys=>setAdvancedView(keys.includes('filters')?'open':'closed')} items={[{
      key:'filters',
      label:<Space>{t('高级筛选')}{advancedCount>0&&<Tag color="blue">{t('{count} 项生效',{count:advancedCount})}</Tag>}</Space>,
      children:<Row gutter={[16,0]}>
@@ -90,7 +123,7 @@ export function AuditPage({databases}:{databases:Database[]}){
     {title:t('操作类型'),dataIndex:'kind',render:kind=><Space orientation="vertical" size={0}><Typography.Text>{t(kindLabels[kind]??kind)}</Typography.Text>{kindLabels[kind]&&<Typography.Text type="secondary" className="mono">{kind}</Typography.Text>}</Space>},
     {title:t('状态'),dataIndex:'status',width:100,render:status=><Tag color={status==='success'?'green':status==='failed'?'red':status==='running'?'blue':'orange'}>{t(statusLabels[status]??status)}</Tag>},
     {title:t('返回行数'),dataIndex:'rows',width:90},
-   ]} expandable={{expandedRowRender:detail}}/>
+   ]} expandable={{expandedRowRender:detail,expandedRowKeys:route.selection?[route.selection]:[],onExpand:(expanded,event)=>selectResource(expanded?event.id:undefined)}}/>
   </Card>
  </Space>;
 }

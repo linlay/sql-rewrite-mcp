@@ -109,7 +109,7 @@ export function App() {
  {!activePage&&<Alert type="info" title={t("当前账号尚未获得数据库权限，请联系系统管理员。")}/>}
  {error && <Alert type="error" title={error} closable onClose={()=>setError(undefined)}/>}
           {activePage === 'table' && <DataBrowser table={route.selection} onOpenTable={openTable} />}
-          {activePage === 'sql' && <SqlWorkbench views={current?.views} queryViewID={current?.query_view_id} permissions={current?.permissions||[]} businessUserID={current?.business_user_id||0} />}
+          {activePage === 'sql' && <SqlWorkbench examples={current?.sql_examples} views={current?.views} queryViewID={current?.query_view_id} permissions={current?.permissions||[]} businessUserID={current?.business_user_id||0} />}
           {activePage === 'actions' && current && <Actions db={current} onSaved={()=>void refresh()}/> }
           {activePage === 'tables' && <QueryConfiguration id={dbID} onSaved={()=>{void refresh();}} />}
           {activePage === 'mcp' && <McpManagement id={dbID} onSaved={()=>{void refresh();}} />}

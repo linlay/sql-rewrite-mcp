@@ -1,8 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Empty, Form, Input, Modal, Space, Spin, Switch, Tag, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Empty, Form, Input, Modal, Space, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { managementCall, type Database, type Knowledge } from '../api';
 import { CodeEditor } from '../components/CodeEditor';
 import { useI18n } from '../ui/preferences';
+import { readRoute, selectResource, useNavigationBlocker, useRoute, useRouteChoice } from '../navigation';
 
 const KnowledgeContent = lazy(() => import('../components/KnowledgeContent'));
 type Fields = Pick<Knowledge, 'id' | 'name' | 'description' | 'published'> & { content: string };
@@ -10,6 +12,7 @@ const fieldsOf = (item: Pick<Knowledge, 'id' | 'name' | 'description' | 'publish
 
 export function KnowledgePage({ db }: { db: Database }) {
  const t = useI18n();
+ const route = useRoute();
  const [items, setItems] = useState<Knowledge[]>([]);
  const [selected, setSelected] = useState<Knowledge>();
  const [draft, setDraft] = useState<Fields>();
@@ -17,19 +20,22 @@ export function KnowledgePage({ db }: { db: Database }) {
  const [search, setSearch] = useState('');
  const [loading, setLoading] = useState(true);
  const [saving, setSaving] = useState(false);
- const [preview, setPreview] = useState(false);
+ const [view,setView]=useRouteChoice('view','edit',['edit','preview']);
+ const preview=view==='preview';
  const [error, setError] = useState('');
  const [form] = Form.useForm<Fields>();
  const sequence = useRef(0);
  const listRef = useRef<HTMLUListElement>(null);
  const dirty = !!draft && (creating || !selected || JSON.stringify(fieldsOf(draft)) !== JSON.stringify(fieldsOf(selected)));
  const locked = loading || saving;
+ useNavigationBlocker(dirty,t('放弃当前知识的未保存修改？'),saving);
  const canWrite = !!db.permissions?.includes('knowledge.write');
- const edit = (item?: Knowledge, isNew = false) => {
-  setSelected(isNew ? undefined : item); setCreating(isNew); setDraft(item ? fieldsOf(item) : undefined); setPreview(false); setError('');
+ const edit = (item?: Knowledge, isNew = false, replace = true) => {
+  setSelected(isNew ? undefined : item); setCreating(isNew); setDraft(item ? fieldsOf(item) : undefined); setError('');
   form.resetFields(); if (item) form.setFieldsValue(fieldsOf(item));
+  if(!isNew)selectResource(item?.id,replace);
  };
- const reload = async (id?: string) => {
+ const reload = async (id = readRoute().selection) => {
   const request = ++sequence.current; setLoading(true); setError('');
   try {
    const entries = await managementCall<Knowledge[]>('list_knowledge', { database_id: db.id });
@@ -54,12 +60,17 @@ export function KnowledgePage({ db }: { db: Database }) {
   if (locked) return;
   if (dirty) Modal.confirm({ title: t('放弃当前知识的未保存修改？'), onOk: work }); else void work();
  };
- const choose = async (item: Knowledge) => {
+ const choose = async (item: Knowledge,replace=false) => {
   const request = ++sequence.current; setLoading(true); setError('');
-  try { const full = await managementCall<Knowledge>('get_knowledge', { database_id: db.id, id: item.id }); if (request === sequence.current) edit(full); }
+  try { const full = await managementCall<Knowledge>('get_knowledge', { database_id: db.id, id: item.id }); if (request === sequence.current) edit(full,false,replace); }
   catch (e) { if (request === sequence.current) setError((e as Error).message); }
   finally { if (request === sequence.current) setLoading(false); }
  };
+ useEffect(()=>{
+  if(!items.length||route.selection===selected?.id)return;
+  const target=items.find(item=>item.id===route.selection)||items[0];
+  void choose(target,true);
+ },[route.selection,items]);
  const save = async () => {
   try {
    const values = await form.validateFields(); setSaving(true); setError('');
@@ -72,8 +83,11 @@ export function KnowledgePage({ db }: { db: Database }) {
  };
  const visible = items.filter(item => `${item.id} ${item.name} ${item.description}`.toLowerCase().includes(search.toLowerCase()));
  return <div className="knowledge-workspace">
-  <Card className="knowledge-list-panel" title={<Space>{t('知识列表')}<Tag>{items.length}</Tag></Space>} extra={<Button size="small" type="primary" disabled={!canWrite || locked || creating} onClick={() => navigate(() => { setSearch(''); edit({ id: crypto.randomUUID(), database_id: db.id, name: '', description: '', content: '', published: false, revision: 0 }, true); })}>{t('新增知识')}</Button>}>
-   <Input.Search aria-label={t('搜索知识列表')} placeholder={t('搜索名称、描述或 ID')} allowClear value={search} onChange={event => setSearch(event.target.value)} />
+  <Card className="knowledge-list-panel" title={<Space>{t('知识列表')}<Tag>{items.length}</Tag></Space>}>
+   <div className="knowledge-list-toolbar">
+    <Input aria-label={t('搜索知识列表')} placeholder={t('搜索名称、描述或 ID')} allowClear value={search} onChange={event => setSearch(event.target.value)} />
+    <Tooltip title={t('新增知识')}><Button type="primary" aria-label={t('新增知识')} icon={<PlusOutlined />} disabled={!canWrite || locked || creating} onClick={() => navigate(() => { setSearch(''); edit({ id: crypto.randomUUID(), database_id: db.id, name: '', description: '', content: '', published: false, revision: 0 }, true); })} /></Tooltip>
+   </div>
    <ul ref={listRef} className="knowledge-list">
     {creating && <li><button type="button" className="knowledge-list-item knowledge-management-item selected" aria-current="true"><strong title={draft?.name}>{draft?.name || t('未命名知识')}</strong><span className="knowledge-entry-id" title={draft?.id}>{draft?.id}</span><Tag className="knowledge-entry-status" color="orange">{t('未保存')}</Tag></button></li>}
     {visible.map(item => <li key={item.id}><button type="button" className={`knowledge-list-item knowledge-management-item${!creating && selected?.id === item.id ? ' selected' : ''}`} disabled={locked} aria-current={!creating && selected?.id === item.id ? 'true' : undefined} onClick={() => { if (creating || item.id !== selected?.id) navigate(() => choose(item)); }}>
@@ -84,7 +98,7 @@ export function KnowledgePage({ db }: { db: Database }) {
   </Card>
   <Card className="knowledge-editor-panel" loading={loading} title={<Space>{creating ? t('新增知识') : selected?.name || t('选择知识')}{dirty && <Tag color="orange">{t('未保存')}</Tag>}</Space>} extra={<Space wrap>
    <Button size="small" disabled={locked} onClick={() => navigate(() => reload(selected?.id))}>{t('刷新')}</Button>
-   {draft && <Button size="small" disabled={locked} onClick={() => setPreview(!preview)}>{preview ? t('编辑正文') : t('预览正文')}</Button>}
+   {draft && <Button size="small" disabled={locked} onClick={() => setView(preview?'edit':'preview')}>{preview ? t('编辑正文') : t('预览正文')}</Button>}
    <Button size="small" type="primary" loading={saving} disabled={!canWrite || !dirty || loading} onClick={() => void save()}>{t('保存知识')}</Button>
   </Space>}>
    {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}

@@ -4,6 +4,7 @@ import { Alert, Card, Descriptions, Empty, Input, Segmented, Space, Table, Tag, 
 import type { ColumnsType, SorterResult } from 'antd/es/table/interface';
 import { api, type BrowseResult, type Row, type TableInfo, type TableSchema } from '../api';
 import { CellValue, SchemeTag, SqlBlock } from '../components/shared';
+import { selectResource, setRouteParams, useRoute, useRouteChoice } from '../navigation';
 
 const { Text } = Typography;
 
@@ -17,6 +18,10 @@ export function DataBrowser({ table, onOpenTable }: { table?: string; onOpenTabl
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [error, setError] = useState<string>();
   const [search, setSearch] = useState('');
+  useEffect(()=>{
+   if(!tables.length)return;
+   if(!table||!tables.some(item=>item.name===table))selectResource(tables[0].name,true);
+  },[table,tables]);
 
   useEffect(() => {
     api.tables().then(setTables).catch((e: Error) => setError(e.message));
@@ -62,8 +67,7 @@ export function DataBrowser({ table, onOpenTable }: { table?: string; onOpenTabl
   );
 }
 
-function initialFilter(): Filter | undefined {
-  const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+function initialFilter(params:URLSearchParams): Filter | undefined {
   const col = params.get('col');
   return col ? { col, val: params.get('val') ?? '' } : undefined;
 }
@@ -78,28 +82,44 @@ function TableView({
   onOpenTable: (table: string, filter?: Filter) => void;
 }) {
  const t=useI18n();
+ const route=useRoute();
   const info = tables.find((tableInfo) => tableInfo.name === table);
   const [schema, setSchema] = useState<TableSchema>();
   const [page, setPage] = useState<BrowseResult>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [query, setQuery] = useState({ limit: 20, offset: 0, order: '', desc: false, q: '', filter: initialFilter() });
-  const [view, setView] = useState<'rows' | 'schema'>('rows');
+  const routeQuery=route.params.toString();
+  const query=useMemo(()=>{
+   const params=new URLSearchParams(routeQuery);
+   const limit=Number(params.get('limit'));
+   const offset=Number(params.get('offset'));
+   return {limit:[20,50,100,200,500].includes(limit)?limit:20,offset:Number.isSafeInteger(offset)&&offset>=0?offset:0,order:params.get('order')||'',desc:params.get('desc')==='1',q:params.get('q')||'',filter:initialFilter(params)};
+  },[routeQuery]);
+  const setQuery=(update:(current:typeof query)=>typeof query)=>{
+   const next=update(query);
+   setRouteParams({limit:next.limit===20?undefined:String(next.limit),offset:next.offset?String(next.offset):undefined,order:next.order||undefined,desc:next.desc?'1':undefined,q:next.q||undefined,col:next.filter?.col,val:next.filter?.val},false,true);
+  };
+  const [view, setView] = useRouteChoice('view','rows',['rows','schema']);
 
   useEffect(() => {
-    api.describe(table).then(setSchema).catch((e: Error) => setError(e.message));
+    let live=true;
+    api.describe(table).then(value=>{if(live)setSchema(value)}).catch((e: Error) => {if(live)setError(e.message)});
+    return()=>{live=false};
   }, [table]);
 
   useEffect(() => {
+    let live=true;
     setLoading(true);
     api
       .rows(table, { ...query, col: query.filter?.col, val: query.filter?.val })
       .then((p) => {
+        if(!live)return;
         setPage(p);
         setError(undefined);
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
+      .catch((e: Error) => {if(live)setError(e.message)})
+      .finally(() => {if(live)setLoading(false)});
+    return()=>{live=false};
   }, [table, query]);
 
   const columns: ColumnsType<Row> = (schema?.columns ?? []).map((c) => ({
@@ -157,6 +177,8 @@ function TableView({
         <>
                 <Space wrap style={{ marginBottom: 12 }}>
                   <Input.Search
+                    key={query.q}
+                    defaultValue={query.q}
                     placeholder={t("在所有字段中搜索")}
                     allowClear
                     enterButton

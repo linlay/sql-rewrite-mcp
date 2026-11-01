@@ -7,6 +7,7 @@ import BusinessActionWorkbench from '../components/BusinessActionWorkbench';
 import { HelpTip } from '../components/HelpTip';
 import { CallDetails, JsonData, invoke, type Invocation } from '../components/ToolCallTrace';
 import { useI18n } from '../ui/preferences';
+import { selectResource, setRouteParams, useRoute, useRouteChoice } from '../navigation';
 
 function argumentTemplate(schema?: ActionSchema) {
  const values: Record<string, unknown> = {};
@@ -19,11 +20,13 @@ function argumentTemplate(schema?: ActionSchema) {
 
 export default function ActionWorkbench({ db }: { db: Database }) {
  const t = useI18n();
- return <Tabs key={db.id} destroyOnHidden items={[{key:'trial',label:t('试运行（回滚）'),children:<ActionWorkflow db={db} />},{key:'business',label:t('真实业务调用'),children:<BusinessActionWorkbench key={db.id} db={db} />}]} />;
+ const [mode,setMode]=useRouteChoice('mode','trial',['trial','business']);
+ return <Tabs key={db.id} activeKey={mode} onChange={setMode} destroyOnHidden items={[{key:'trial',label:t('试运行（回滚）'),children:<ActionWorkflow db={db} />},{key:'business',label:t('真实业务调用'),children:<BusinessActionWorkbench key={db.id} db={db} />}]} />;
 }
 
 function ActionWorkflow({ db }: { db: Database }) {
  const t = useI18n();
+ const route=useRoute();
  const { user } = useAuth();
  const [list, setList] = useState<Invocation<{ actions: ActionDescription[] }>>();
  const [detail, setDetail] = useState<Invocation<ActionDescription>>();
@@ -31,36 +34,48 @@ function ActionWorkflow({ db }: { db: Database }) {
  const [selected, setSelected] = useState('');
  const [filter, setFilter] = useState('');
  const [args, setArgs] = useState('{}');
- const [identity, setIdentity] = useState<number | null>(db.business_user_id || 1);
+ const requestedIdentity=Number(route.params.get('identity'));
+ const identity=Number.isSafeInteger(requestedIdentity)&&requestedIdentity>0?requestedIdentity:db.business_user_id||1;
  const [requestID, setRequestID] = useState('');
  const [validation, setValidation] = useState('');
  const [listing, setListing] = useState(false);
  const [describing, setDescribing] = useState(false);
  const [running, setRunning] = useState(false);
- const [listTab, setListTab] = useState('list');
- const [detailTab, setDetailTab] = useState('parameters');
- const [resultTab, setResultTab] = useState('preview');
+ const [listTab, setListTab] = useRouteChoice('listView','list',['list','json']);
+ const [detailTab, setDetailTab] = useRouteChoice('detailView','parameters',['parameters','json']);
+ const [resultTab, setResultTab] = useRouteChoice('resultView','preview',['preview','json']);
+ const selectedRequest=useRef('');
  const listSequence = useRef(0), detailSequence = useRef(0), runSequence = useRef(0);
- useEffect(() => () => { listSequence.current++; detailSequence.current++; runSequence.current++; }, []);
+ useEffect(() => () => { selectedRequest.current=''; listSequence.current++; detailSequence.current++; runSequence.current++; }, []);
  const canImpersonate = user.system_admin || !!db.permissions?.includes('impersonate');
  const resetTrial = () => {
   runSequence.current++; setRunning(false); setTrial(undefined); setValidation(''); setRequestID(crypto.randomUUID());
  };
- const loadList = async () => {
-  const request = ++listSequence.current; detailSequence.current++;
-  resetTrial(); setSelected(''); setDetail(undefined); setDescribing(false); setList(undefined); setListing(true); setListTab('list');
+ useEffect(()=>{resetTrial();},[identity]);
+ const loadList = async (clear=true) => {
+  const request = ++listSequence.current;
+  if(clear){detailSequence.current++;resetTrial();selectedRequest.current='';setSelected('');setDetail(undefined);setDescribing(false);selectResource();}
+  setList(undefined); setListing(true); if(clear)setListTab('list',true);
   const result = await invoke<{ actions: ActionDescription[] }>(db.id, 'list_actions', {});
   if (request !== listSequence.current) return;
   setList(result); setListing(false);
  };
- const describe = async (name: string) => {
+ const describe = async (name: string, sync=true) => {
   const request = ++detailSequence.current;
-  resetTrial(); setSelected(name); setDetail(undefined); setDescribing(true); setArgs('{}'); setDetailTab('parameters');
+  selectedRequest.current=name;
+  resetTrial(); setSelected(name); setDetail(undefined); setDescribing(true); setArgs('{}');
+  if(sync){selectResource(name);setDetailTab('parameters',true);}
   const result = await invoke<ActionDescription>(db.id, 'describe_action', { name });
   if (request !== detailSequence.current) return;
   setDetail(result); setDescribing(false);
   if (result.data) setArgs(argumentTemplate(result.data.parameters));
  };
+ useEffect(()=>{
+  const name=route.selection||'';
+  if(name===selectedRequest.current)return;
+  if(!name){selectedRequest.current='';detailSequence.current++;resetTrial();setSelected('');setDetail(undefined);setDescribing(false);return;}
+  void loadList(false);void describe(name,false);
+ },[route.selection]);
  const run = async () => {
   if (!detail?.data || !db.write_enabled || !canImpersonate || running) return;
   let arguments_: Record<string, unknown>;
@@ -71,7 +86,7 @@ function ActionWorkflow({ db }: { db: Database }) {
    if (!requestID.trim() || requestID.length > 128 || requestID !== requestID.trim()) throw new Error(t('request_id 必填且最多 128 字符'));
   } catch (error) { setValidation((error as Error).message); return; }
   const request = ++runSequence.current;
-  setValidation(''); setTrial(undefined); setRunning(true); setResultTab('preview');
+  setValidation(''); setTrial(undefined); setRunning(true); setResultTab('preview',true);
   const result = await invoke<ActionPreview>(db.id, 'try_action', { name: detail.data.name, arguments: arguments_, business_user_id: identity, request_id: requestID });
   if (request !== runSequence.current) return;
   setTrial(result); setRunning(false);
@@ -114,10 +129,10 @@ function ActionWorkflow({ db }: { db: Database }) {
        ]} /> },
        { key: 'json', label: t('返回 JSON'), children: <JsonData value={action} /> },
       ]} />
-      {!db.write_enabled && <Alert type="info" showIcon title={t('当前数据库未允许执行动作，请在动作配置中开启。')} />}
+      {!db.write_enabled && <Alert type="info" showIcon title={t('当前数据库未允许执行动作，请在 MCP 配置中启用执行业务操作。')} />}
       {!canImpersonate && <Alert type="info" showIcon title={t('当前账号没有模拟业务身份权限，可查看参数，不能试运行。')} />}
       <div className="action-trial-inputs">
-       <label><span>{t('业务身份编号')}</span><InputNumber aria-label={t('业务身份编号')} value={identity} min={1} max={Number.MAX_SAFE_INTEGER} precision={0} disabled={running} onChange={value => { setIdentity(value); resetTrial(); }} /></label>
+       <label><span>{t('业务身份编号')}</span><InputNumber aria-label={t('业务身份编号')} value={identity} min={1} max={Number.MAX_SAFE_INTEGER} precision={0} disabled={running} onChange={value => { setRouteParams({identity:value===null?undefined:String(value)},false,true); resetTrial(); }} /></label>
        <label><span>request_id</span><Space.Compact block><Input aria-label="request_id" value={requestID} maxLength={128} disabled={running} onChange={event => { setRequestID(event.target.value); setTrial(undefined); setValidation(''); }} /><Button disabled={running} onClick={resetTrial}>{t('新请求')}</Button></Space.Compact></label>
       </div>
       <div className="action-trial-arguments"><div className="action-trial-arguments-heading"><Typography.Text>{t('调用参数 JSON')}</Typography.Text><Button size="small" disabled={running} onClick={() => { setArgs(argumentTemplate(schema)); resetTrial(); }}>{t('填入参数模板')}</Button></div><CodeEditor language="json" height="200px" value={args} onChange={value => { setArgs(value); resetTrial(); }} readOnly={running} /></div>

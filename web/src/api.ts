@@ -215,8 +215,10 @@ export interface ActionPreview { status:string;message?:string;result?:unknown;p
 export interface AuthProvider {id:string;name:string;type:string;enabled:boolean;issuer?:string;authorize_url?:string;token_url?:string;userinfo_url?:string;account_url?:string;client_id?:string;secret_env?:string;subject_claim?:string;username_claim?:string;business_id_claim?:string}
 export interface AuthPolicy {id:string;name:string;mode:'ACCOUNT'|'OAUTH'|'NONE';provider_id?:string;permissions?:string[];business_user_id?:number}
 export interface AuthConfig {revision:number;default_policy_id:string;providers:AuthProvider[];policies:AuthPolicy[];bindings:{target_type:'API'|'DATABASE';target_id:string;policy_id:string}[]}
+export interface SQLExample { label: string; sql: string }
 export interface Database {
  views?:ViewDefinition[]; query_view_id?:string;
+ sql_examples?: SQLExample[];
  management_path?:string; audit_path?:string; access?:{policy:AuthPolicy;provider:AuthProvider;revision:number;source?:'DATABASE'};
  actions?: ActionDefinition[];
  action_libraries?: ActionLibrary[];

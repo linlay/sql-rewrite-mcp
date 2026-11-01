@@ -4,6 +4,7 @@ import type { KnowledgePrompt, KnowledgePrompts, KnowledgePromptResult } from '.
 import { HelpTip } from '../components/HelpTip';
 import { CallDetails, JsonData, invoke, type Invocation } from '../components/ToolCallTrace';
 import { useI18n } from '../ui/preferences';
+import { selectResource, useRoute, useRouteChoice } from '../navigation';
 
 const KnowledgeContent = lazy(() => import('../components/KnowledgeContent'));
 export default function KnowledgeWorkbench({ databaseID }: { databaseID: string }) {
@@ -13,6 +14,7 @@ export default function KnowledgeWorkbench({ databaseID }: { databaseID: string 
 
 function KnowledgeWorkflow({ databaseID }: { databaseID: string }) {
  const t = useI18n();
+ const route=useRoute();
  const [query, setQuery] = useState('');
  const [knowledgeID, setKnowledgeID] = useState('');
  const [searchResult, setSearchResult] = useState<Invocation<KnowledgePrompts>>();
@@ -20,31 +22,39 @@ function KnowledgeWorkflow({ databaseID }: { databaseID: string }) {
  const [readResult, setReadResult] = useState<Invocation<KnowledgePromptResult>>();
  const [searching, setSearching] = useState(false);
  const [reading, setReading] = useState(false);
- const [searchTab, setSearchTab] = useState('list');
- const [readTab, setReadTab] = useState('json');
+ const [searchTab, setSearchTab] = useRouteChoice('listView','list',['list','json']);
+ const [readTab, setReadTab] = useRouteChoice('detailView','json',['json','preview']);
+ const selectedRequest=useRef('');
  const searchSequence = useRef(0);
  const readSequence = useRef(0);
- useEffect(() => () => { searchSequence.current++; readSequence.current++; }, []);
+ useEffect(() => () => { selectedRequest.current=''; searchSequence.current++; readSequence.current++; }, []);
 
- const selectID = (id: string) => {
+ const selectID = (id: string, replace=false) => {
   readSequence.current++;
-  setKnowledgeID(id); setReadResult(undefined); setReading(false); setReadTab('json');
+  selectedRequest.current=id;
+  setKnowledgeID(id); setReadResult(undefined); setReading(false);selectResource(id||undefined,replace);setReadTab('json',true);
  };
- const search = async (cursor?:string) => {
+ const search = async (cursor?:string,clear=true) => {
   const request = ++searchSequence.current;
-  if(!cursor){selectID('');setEntries([])} setSearching(true); setSearchResult(undefined); setSearchTab('list');
+  if(!cursor){if(clear)selectID('');setEntries([])} setSearching(true); setSearchResult(undefined); if(clear)setSearchTab('list',true);
   const result = await invoke<KnowledgePrompts>(databaseID, 'list_knowledge_prompts', cursor?{cursor}:{});
   if (request !== searchSequence.current) return;
   setSearchResult(result); if(result.data)setEntries(previous=>cursor?[...previous,...result.data!.prompts]:result.data!.prompts); setSearching(false);
  };
- const read = async () => {
-  if (!searchResult?.data || !knowledgeID.trim()) return;
+ const read = async (name=knowledgeID.trim()) => {
+  if (!name) return;
   const request = ++readSequence.current;
-  setReading(true); setReadResult(undefined); setReadTab('json');
-  const result = await invoke<KnowledgePromptResult>(databaseID, 'get_knowledge_prompt', { name: knowledgeID.trim() });
+  setReading(true); setReadResult(undefined);
+  const result = await invoke<KnowledgePromptResult>(databaseID, 'get_knowledge_prompt', { name });
   if (request !== readSequence.current) return;
   setReadResult(result); setReading(false);
  };
+ useEffect(()=>{
+  const name=route.selection||'';
+  if(name===selectedRequest.current)return;
+  selectedRequest.current=name;readSequence.current++;setKnowledgeID(name);setReadResult(undefined);setReading(false);
+  if(name){void search(undefined,false);void read(name);}
+ },[route.selection]);
  const items = searchResult?.data ? entries.filter(item=>`${item.name} ${item.title} ${item.description}`.toLowerCase().includes(query.toLowerCase())) : undefined;
  const document = readResult?.data;
 
@@ -80,7 +90,7 @@ function KnowledgeWorkflow({ databaseID }: { databaseID: string }) {
    </Card>
    <Card size="small" className="knowledge-call-panel knowledge-read-step" title={t('2. 按 ID 读取正文')} extra={<Typography.Text code>prompts/get</Typography.Text>}>
     <form className="knowledge-call-form" onSubmit={event => { event.preventDefault(); void read(); }}>
-     <Input aria-label={t('知识 ID')} placeholder={t('从列表选择或输入知识 ID')} value={knowledgeID} disabled={!items || searching} allowClear onChange={event => selectID(event.target.value)} />
+     <Input aria-label={t('知识 ID')} placeholder={t('从列表选择或输入知识 ID')} value={knowledgeID} disabled={!items || searching} allowClear onChange={event => selectID(event.target.value,true)} />
      <Button type="primary" htmlType="submit" disabled={!items || searching || !knowledgeID.trim()} loading={reading}>{t('读取正文')}</Button>
     </form>
     {readResult && <CallDetails invocation={readResult} />}

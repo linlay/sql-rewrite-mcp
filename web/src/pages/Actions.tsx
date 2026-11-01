@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Empty, Form, Input, InputNumber, Modal, Select, Space, Switch, Tag, Tooltip, Typography, message } from 'antd';
 import { databases, managementCall, type Database, type ActionDefinition } from '../api';
-import { ActionExecutionSettings } from '../components/ActionExecutionSettings';
 import { ActionLibraries } from '../components/ActionLibraries';
 import { CodeEditor } from '../components/CodeEditor';
 import { HelpTip } from '../components/HelpTip';
 import { ParameterEditor, parameterMap, parameterRows, type ParameterRow } from '../components/ParameterEditor';
 import { useI18n } from '../ui/preferences';
+import { selectResource, useNavigationBlocker, useRoute } from '../navigation';
 
 const example: ActionDefinition = {
  name: '', title: '', description: '', confirm: true,
@@ -18,8 +19,9 @@ const fieldsOf = (action: ActionFields): ActionFields => ({ view_id: action.view
 
 export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) {
  const t = useI18n();
+ const route = useRoute();
  const [currentDB, setCurrentDB] = useState(db);
- const [selectedName, setSelectedName] = useState<string>();
+ const [selectedName, setSelectedName] = useState<string | undefined>(route.selection);
  const [creating, setCreating] = useState(false);
  const [draft, setDraft] = useState<ActionFields>();
  const [parameters, setParameters] = useState<ParameterRow[]>([]);
@@ -40,23 +42,29 @@ export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) 
  const canWrite = !!currentDB.permissions?.includes('action.write');
  const dirty = !!draft && (creating || !selected || JSON.stringify(fieldsOf(draft)) !== JSON.stringify(fieldsOf(selected)) || JSON.stringify(parameters) !== JSON.stringify(parameterRows(selected.parameters)));
  const locked = busy || trialBusy;
+ useNavigationBlocker(dirty,t('放弃当前动作的未保存修改？'),locked);
 
- const edit = (action?: ActionDefinition, isNew = false) => {
+ const edit = (action?: ActionDefinition, isNew = false, replace = true) => {
   setSelectedName(isNew ? undefined : action?.name); setCreating(isNew);
   setDraft(action ? fieldsOf(action) : undefined); setParameters(parameterRows(action?.parameters || {}));
   form.resetFields(); if (action) form.setFieldsValue(fieldsOf(action));
   setError(''); setTrialName(undefined); setTrialError(''); setResult(undefined); setArgs('{}');
+  if (!isNew) selectResource(action?.name,replace);
  };
  // A parent refresh must not erase an action being edited or replace the
  // revision against which its draft was created.
  useEffect(() => {
-  if (db.id !== currentDB.id || !draft && !creating && !selectedName) {
-   setCurrentDB(db); setRemoteChanged(false); edit(db.actions?.[0]); return;
+  if (db.id !== currentDB.id || !draft && !creating) {
+   setCurrentDB(db); setRemoteChanged(false); edit(db.actions?.find(action=>action.name===route.selection)||db.actions?.[0]); return;
   }
   if (db.revision <= currentDB.revision) return;
   if (dirty) { setRemoteChanged(true); return; }
   setCurrentDB(db); setRemoteChanged(false); edit(db.actions?.find(action => action.name === selectedName) || db.actions?.[0]);
  }, [db.id, db.revision]);
+ useEffect(()=>{
+  if(route.selection===selectedName)return;
+  edit(items.find(action=>action.name===route.selection)||items[0]);
+ },[route.selection]);
  useEffect(() => {
   if (!dirty) return;
   const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
@@ -120,19 +128,20 @@ export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) 
  const canTrial = !!selected && !creating && !dirty && !!currentDB.write_enabled && !!currentDB.permissions?.includes('impersonate') && canWrite;
  return <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
   <div className="action-workspace">
-   <Card className="action-list-panel" title={<Space>{t('动作列表')}<Tag>{items.length}</Tag></Space>} extra={<Button size="small" type="primary" disabled={!canWrite || locked || creating} onClick={() => navigate(() => { setSearch(''); edit(example, true); })}>{t('新增动作')}</Button>}>
-    <Input.Search aria-label={t('搜索动作')} placeholder={t('搜索名称、标题、说明')} value={search} allowClear onChange={event => setSearch(event.target.value)} />
+   <Card className="action-list-panel" title={<Space>{t('动作列表')}<Tag>{items.length}</Tag></Space>} extra={<ActionLibraries db={currentDB} disabled={dirty || locked} onSaved={next => { setCurrentDB(next); onSaved(); }} />}>
+    <div className="action-list-toolbar">
+     <Input aria-label={t('搜索动作')} placeholder={t('搜索名称、标题、说明')} value={search} allowClear onChange={event => setSearch(event.target.value)} />
+     <Tooltip title={t('新增动作')}><Button type="primary" aria-label={t('新增动作')} icon={<PlusOutlined />} disabled={!canWrite || locked || creating} onClick={() => navigate(() => { setSearch(''); edit(example, true); })} /></Tooltip>
+    </div>
     <ul ref={listRef} className="action-list" aria-label={t('动作列表')}>
      {creating && <li><button type="button" className="action-list-item selected" aria-current="true"><strong>{draft?.title || t('未命名动作')}</strong><span>{draft?.name || t('新动作')}</span><Tag color="orange">{t('未保存')}</Tag></button></li>}
-     {visible.map(action => <li key={action.name}><button type="button" className={`action-list-item${!creating && selectedName === action.name ? ' selected' : ''}`} aria-current={!creating && selectedName === action.name ? 'true' : undefined} disabled={locked} onClick={() => { if (creating || action.name !== selectedName) navigate(() => edit(action)); }}>
+     {visible.map(action => <li key={action.name}><button type="button" className={`action-list-item${!creating && selectedName === action.name ? ' selected' : ''}`} aria-current={!creating && selectedName === action.name ? 'true' : undefined} disabled={locked} onClick={() => { if (creating || action.name !== selectedName) navigate(() => edit(action,false,false)); }}>
       <strong>{action.title}</strong><span>{action.name}</span>
      </button></li>)}
      {!visible.length && !creating && <li><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('暂无动作')} /></li>}
     </ul>
    </Card>
    <Card className="action-editor-panel" title={<Space>{creating ? t('新增动作') : selected?.title || t('选择动作')}{dirty && <Tag color="orange">{t('未保存')}</Tag>}</Space>} extra={<Space wrap>
-    <ActionExecutionSettings db={currentDB} dirty={dirty || locked} onSaved={onSaved} onError={setError} />
-    <ActionLibraries db={currentDB} disabled={dirty || locked} onSaved={next => { setCurrentDB(next); onSaved(); }} />
     {draft && <Space wrap>
     <Tooltip title={dirty ? t('保存后可试运行') : undefined}><Button disabled={!canTrial || locked} onClick={() => { setTrialName(selectedName); setResult(undefined); setTrialError(''); }}>{t('试运行')}</Button></Tooltip>
     <Button disabled={!canWrite || dirty || creating || locked} onClick={copy}>{t('复制')}</Button>
@@ -146,7 +155,7 @@ export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) 
       <div className="action-fields-grid">
        <Form.Item name="name" label={t('名称')} rules={[{ required: true, pattern: /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/ }]}><Input /></Form.Item>
        <Form.Item name="title" label={t('标题')} rules={[{ required: true }]}><Input /></Form.Item>
-       <Form.Item name="description" label={t('说明')} rules={[{ required: true }]}><Input /></Form.Item>
+       <Form.Item name="description" label={t('说明')} rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item>
        <Form.Item name="view_id" label={t("关联视图")}><Select allowClear placeholder={t("无关联视图")} options={(currentDB.views || []).filter(v => v.published).map(v => ({ value:v.id, label:v.name }))} /></Form.Item>
        <Form.Item name="confirm" label={t('人工确认')} valuePropName="checked"><Switch /></Form.Item>
       </div>

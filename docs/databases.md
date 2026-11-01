@@ -62,6 +62,18 @@ MySQL、PostgreSQL 默认启用证书与主机名校验；可信开发网络可�
 
 ## SQL 与权限改写范围
 
+查询工作台的 SQL 示例由每个数据库的 `management/database.yml` 独立配置，不使用全局示例。示例只填入编辑区，不自动执行；省略 `sqlExamples` 或设为 `[]` 时，隐藏示例选择框，编辑区初始为空。
+
+```yaml
+database:
+  # 其余数据库配置保持原样
+  sqlExamples:
+    - label: 最近订单
+      sql: SELECT id, status FROM orders ORDER BY id DESC LIMIT 20
+```
+
+YAML 使用 `sqlExamples`，管理 API 使用 `sql_examples`，修改示例需要 `config.write` 权限。证券演示库的示例模板见 `config/securities-sql-examples.yml`，仅配置到相应证券库。
+
 网络数据源第一版接收受限 SELECT 方言。解析器仍以 SQLite 的语法树为内部表示，再由 `internal/dialect` 校验并生成目标 SQL；这不是各数据库全部原生语法的支持声明。数据库报错时不会回退到原 SQL。
 
 - 支持单条 SELECT、WHERE、显式 JOIN ON、子查询、非递归 CTE、GROUP BY/HAVING、ORDER BY、UNION，以及非负整数 LIMIT/OFFSET。部分集合或 JOIN 形式按库拒绝。
