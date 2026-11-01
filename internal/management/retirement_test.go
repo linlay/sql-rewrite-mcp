@@ -91,7 +91,7 @@ func TestOfflineYAMLCleanupPreservesRevisionAndBackup(t *testing.T) {
 		t.Fatal("original YAML not backed up", err)
 	}
 	after, err := os.ReadFile(file)
-	if err != nil || strings.Contains(string(after), "RECORDS_:") || strings.Contains(string(after), "REPORTS_:") {
+	if err != nil || strings.Contains(string(after), "records:") || strings.Contains(string(after), "reports:") {
 		t.Fatal("operational state retained", err)
 	}
 	retry, err := MigrateToYAML(ctx, global)

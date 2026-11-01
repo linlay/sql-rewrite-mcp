@@ -34,9 +34,15 @@ type actionPayload struct {
 	Username              string          `json:"username,omitempty"`
 	AccountRevision       int64           `json:"account_revision,omitempty"`
 	AuthenticationVersion string          `json:"authentication_version,omitempty"`
+	CodeFingerprint       string          `json:"code_fingerprint,omitempty"`
 	Now                   time.Time       `json:"now"`
 	Preview               *action.Preview `json:"preview,omitempty"`
 	Response              *ActionResponse `json:"response,omitempty"`
+}
+
+func actionCodeFingerprint(d *catalog.Database, definition action.Definition) string {
+	raw, _ := json.Marshal([]any{definition, d.ActionLibraries})
+	return fmt.Sprintf("%x", sha256.Sum256(raw))
 }
 
 func (s *Service) ListActions(ctx context.Context, database string) (any, error) {
@@ -148,7 +154,7 @@ func (s *Service) invokeAction(ctx context.Context, database, name, requestID st
 	}
 	raw, _ := json.Marshal(map[string]any{"name": name, "arguments": args, "user_id": userID, "dry_run": dryRun})
 	fingerprint := fmt.Sprintf("%x", sha256.Sum256(raw))
-	p := actionPayload{Name: name, Arguments: args, UserID: userID, Username: username, AccountRevision: accountRevision, AuthenticationVersion: d.AuthenticationVersion(), Now: time.Now().UTC()}
+	p := actionPayload{Name: name, Arguments: args, UserID: userID, Username: username, AccountRevision: accountRevision, AuthenticationVersion: d.AuthenticationVersion(), CodeFingerprint: actionCodeFingerprint(d, def), Now: time.Now().UTC()}
 	data, _ := json.Marshal(p)
 	rec, fresh, e := s.Management.ReserveAction(ctx, management.ActionRequest{DatabaseID: database, Actor: actor, RequestID: requestID, Fingerprint: fingerprint, Revision: d.Revision, State: "running", Data: string(data)})
 	if e != nil {
@@ -165,7 +171,7 @@ func (s *Service) invokeAction(ctx context.Context, database, name, requestID st
 			return p.Response, nil
 		}
 		if rec.State == "pending" {
-			if rec.Revision != d.Revision || rec.Expires <= time.Now().Unix() {
+			if rec.Revision != d.Revision || rec.Expires <= time.Now().Unix() || p.CodeFingerprint != actionCodeFingerprint(d, def) {
 				return nil, errors.New("确认预览已过期，请使用新的 request_id")
 			}
 			return s.confirmResponse(rec, &p), nil
@@ -264,7 +270,7 @@ func (s *Service) runAction(ctx context.Context, d *catalog.Database, def action
 		ev.Detail = map[string]any{"preview": false, "arguments": p.Arguments, "output": result}
 		return s.Management.Audit.Put(ctx, *ev)
 	}
-	return (action.Runner{BeforeCommit: ready, Store: writer, Rewriter: svc.Rewriter, Bindings: bindings, UserID: p.UserID, Now: p.Now}).Run(ctx, def, p.Arguments, preview, expected)
+	return (action.Runner{Libraries: d.ActionLibraries, DatabaseID: d.ID, BeforeCommit: ready, Store: writer, Rewriter: svc.Rewriter, Bindings: bindings, UserID: p.UserID, Now: p.Now}).Run(ctx, def, p.Arguments, preview, expected)
 }
 
 // ConfirmationInfo reveals only the preview for an unguessable, short-lived
@@ -325,7 +331,7 @@ func (s *Service) ConfirmAction(ctx context.Context, token, password string) (*A
 	if e != nil {
 		return nil, e
 	}
-	if rec.Revision != d.Revision || p.AuthenticationVersion != d.AuthenticationVersion() {
+	if rec.Revision != d.Revision || p.AuthenticationVersion != d.AuthenticationVersion() || p.CodeFingerprint != actionCodeFingerprint(d, def) {
 		return nil, errors.New("数据库配置已变化，请重新预览")
 	}
 	if policy.Local() {

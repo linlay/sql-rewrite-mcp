@@ -148,15 +148,15 @@ func TestYAMLUpgradePreservesAndStopsUsingLegacySQLite(t *testing.T) {
 		t.Fatal("source binding remains global", e)
 	}
 	table, e := os.ReadFile(filepath.Join(source.Path, "tables", "items.yml"))
-	if e != nil || bytes.Contains(table, []byte("{{")) || !bytes.Contains(table, []byte("owner_id=${user_id}")) || bytes.Contains(table, []byte("COMPILED_SQL_")) || !bytes.Contains(table, []byte("CustomerID:")) {
+	if e != nil || bytes.Contains(table, []byte("{{")) || !bytes.Contains(table, []byte("owner_id=${user_id}")) || bytes.Contains(table, []byte("compiledSql")) || !bytes.Contains(table, []byte("CustomerID:")) {
 		t.Fatalf("table conversion: %s %v", table, e)
 	}
 	action, e := os.ReadFile(filepath.Join(source.Path, "actions", "edit.yml"))
-	if e != nil || !bytes.Contains(action, []byte("CustomerID:")) || !bytes.Contains(action, []byte("params:")) || !bytes.Contains(action, []byte("SCRIPT_: |-")) {
+	if e != nil || !bytes.Contains(action, []byte("CustomerID:")) || !bytes.Contains(action, []byte("params:")) || !bytes.Contains(action, []byte("script: |-")) {
 		t.Fatalf("action: %s %v", action, e)
 	}
 	knowledge, e := os.ReadFile(filepath.Join(source.Path, "knowledges", "guide.yml"))
-	if e != nil || !bytes.Contains(knowledge, []byte("DESCRIPTION_: |-")) || !bytes.Contains(knowledge, []byte("CONTENT_: |")) {
+	if e != nil || !bytes.Contains(knowledge, []byte("description: |-")) || !bytes.Contains(knowledge, []byte("content: |")) {
 		t.Fatalf("knowledge: %s %v", knowledge, e)
 	}
 	for _, forbidden := range []string{"template", "fragment.yml", "version", "state", "prompts"} {

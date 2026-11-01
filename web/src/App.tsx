@@ -37,7 +37,7 @@ function parseHash():Route{
 }
 
 const icons={database:<DatabaseOutlined/>,tables:<FilterOutlined/>,actions:<CodeOutlined/>,knowledge:<BookOutlined/>,'knowledge-workbench':<FileSearchOutlined/>,'action-workbench':<PlayCircleOutlined/>,sql:<ConsoleSqlOutlined/>,table:<TableOutlined/>,audit:<AuditOutlined/>,mcp:<ApiOutlined/>};
-const titles:Record<Page,string>={database:'数据库配置',tables:'查询配置',actions:'动作配置',knowledge:'知识管理',sql:'SQL 工作台','knowledge-workbench':'知识工作台','action-workbench':'动作工作台',table:'表数据',audit:'操作日志',mcp:'MCP 配置'};
+const titles:Record<Page,string>={database:'数据库配置',tables:'查询配置',actions:'动作配置',knowledge:'知识配置',sql:'查询工作台','knowledge-workbench':'知识工作台','action-workbench':'动作工作台',table:'表数据',audit:'操作日志',mcp:'MCP 配置'};
 const navigationGroups: Page[][] = [
  ['database', 'tables', 'actions', 'knowledge'],
  ['sql', 'knowledge-workbench', 'action-workbench', 'table'],

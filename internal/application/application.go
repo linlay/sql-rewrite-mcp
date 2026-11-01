@@ -182,6 +182,9 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 			return nil, errors.New("配置已变更，请刷新后重试")
 		}
 		d.Actions = in.Database.Actions
+		if in.Database.ActionLibraries != nil {
+			d.ActionLibraries = in.Database.ActionLibraries
+		}
 		d.WriteEnabled = in.Database.WriteEnabled
 		d.WriteConnection = in.Database.WriteConnection
 		if e = s.Catalog.SaveWithWritePassword(ctx, *d, in.WritePassword); e != nil {
@@ -433,7 +436,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if old.Driver != in.Database.Driver || old.Path != in.Database.Path || !reflect.DeepEqual(old.Connection, in.Database.Connection) {
 			return nil, errors.New("连接信息登记后固定；更换数据库目标或凭据引用请新建数据源并重新配置权限")
 		}
-		if !reflect.DeepEqual(old.Actions, in.Database.Actions) || old.WriteEnabled != in.Database.WriteEnabled || !reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) || in.WritePassword != "" {
+		if !reflect.DeepEqual(old.Actions, in.Database.Actions) || !reflect.DeepEqual(old.ActionLibraries, in.Database.ActionLibraries) || old.WriteEnabled != in.Database.WriteEnabled || !reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) || in.WritePassword != "" {
 			if e := require("action.write"); e != nil {
 				return nil, e
 			}
@@ -459,7 +462,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if e := require("config.read"); e != nil {
 			return nil, e
 		}
-		if in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) {
+		if in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && reflect.DeepEqual(old.ActionLibraries, in.Database.ActionLibraries) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) {
 			return s.DatabaseView(ctx, *old), nil
 		}
 		if e := s.Catalog.SaveWithWritePassword(ctx, *in.Database, in.WritePassword); e != nil {
@@ -632,11 +635,11 @@ func (s *Service) readKnowledge(ctx context.Context, in Input, full, drafts bool
 	if e := d.Config.Validate(); e != nil {
 		return nil, e
 	}
-	matches, e := s.Management.SearchKnowledge(ctx, in.Query)
+	records, e := s.Management.RecordsForDatabase(ctx, "knowledge", in.DatabaseID)
 	if e != nil {
 		return nil, e
 	}
-	records, e := s.Management.Records(ctx, "knowledge")
+	matches, e := management.MatchKnowledgeRecords(records, in.Query)
 	if e != nil {
 		return nil, e
 	}
@@ -709,6 +712,7 @@ func (s *Service) DatabaseView(ctx context.Context, d catalog.Database) Database
 		d.Connection = nil
 		d.Config = nil
 		d.Actions = nil
+		d.ActionLibraries = nil
 		d.WriteConnection = nil
 		d.WriteEnabled = false
 		d.Tools = nil

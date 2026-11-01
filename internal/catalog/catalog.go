@@ -36,19 +36,20 @@ var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 type Database struct {
 	AuthPolicyFingerprint  string              `json:"-" yaml:"-"`
 	Actions                []action.Definition `json:"actions,omitempty" yaml:"actions,omitempty"`
-	WriteEnabled           bool                `json:"write_enabled,omitempty" yaml:"write_enabled,omitempty"`
-	WriteConnection        *store.Connection   `json:"write_connection,omitempty" yaml:"write_connection,omitempty"`
+	ActionLibraries        []action.Library    `json:"action_libraries,omitempty" yaml:"actionLibraries,omitempty"`
+	WriteEnabled           bool                `json:"write_enabled,omitempty" yaml:"writeEnabled,omitempty"`
+	WriteConnection        *store.Connection   `json:"write_connection,omitempty" yaml:"writeConnection,omitempty"`
 	Discovery              *Discovery          `json:"discovery,omitempty" yaml:"discovery,omitempty"`
-	AuthenticationRevision int64               `json:"authentication_revision,omitempty" yaml:"authentication_revision,omitempty"`
+	AuthenticationRevision int64               `json:"authentication_revision,omitempty" yaml:"authenticationRevision,omitempty"`
 	Authentication         *Authentication     `json:"authentication,omitempty" yaml:"authentication,omitempty"`
 	ID                     string              `json:"id" yaml:"id"`
 	Name                   string              `json:"name" yaml:"name"`
 	Driver                 string              `json:"driver" yaml:"driver"`
 	Path                   string              `json:"path" yaml:"path"`
 	Connection             *store.Connection   `json:"connection,omitempty" yaml:"connection,omitempty"`
-	MCPEnabled             bool                `json:"mcp_enabled" yaml:"mcp_enabled"`
-	KnowledgeEnabled       *bool               `json:"knowledge_enabled,omitempty" yaml:"knowledge_enabled,omitempty"`
-	MCPPath                string              `json:"mcp_path" yaml:"mcp_path,omitempty"`
+	MCPEnabled             bool                `json:"mcp_enabled" yaml:"mcpEnabled"`
+	KnowledgeEnabled       *bool               `json:"knowledge_enabled,omitempty" yaml:"knowledgeEnabled,omitempty"`
+	MCPPath                string              `json:"mcp_path" yaml:"mcpPath,omitempty"`
 	Tools                  []string            `json:"tools" yaml:"tools"`
 	Config                 *rewrite.Config     `json:"config" yaml:"config"`
 	Revision               int                 `json:"revision" yaml:"revision"`
@@ -243,19 +244,15 @@ func configFilename(d Database) string {
 }
 
 func (c *Catalog) Get(id string) (*Database, error) {
+	if c.Management != nil {
+		return c.getManaged(context.Background(), id)
+	}
 	items, err := c.List()
 	if err != nil {
 		return nil, err
 	}
 	for _, item := range items {
 		if item.ID == id {
-			if c.Management != nil {
-				p, e := c.Management.ResolveAuth(context.Background(), "DATABASE", id)
-				if e != nil {
-					return nil, e
-				}
-				item.AuthPolicyFingerprint = p.Fingerprint()
-			}
 			return &item, nil
 		}
 	}
@@ -409,6 +406,7 @@ func (c *Catalog) addDatabase(ctx context.Context, d Database, password string) 
 	applyDiscovery(&d, tables)
 	d.MCPEnabled = false
 	d.Actions = nil
+	d.ActionLibraries = nil
 	d.WriteEnabled = false
 	d.WriteConnection = nil
 	d.Tools = append([]string(nil), DefaultTools...)

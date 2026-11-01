@@ -226,7 +226,7 @@ func TestDatabaseOwnedAndGlobalAuthenticationSources(t *testing.T) {
 	must(t, err)
 	var authDoc map[string]any
 	must(t, yaml.Unmarshal(rawAuth, &authDoc))
-	delete(authDoc["AUTHENTICATION_"].(map[string]any), "PROVIDER_")
+	delete(authDoc["authentication"].(map[string]any), "provider")
 	rawAuth, err = yaml.Marshal(authDoc)
 	must(t, err)
 	err = os.WriteFile(filepath.Join(src.Path, "authentication.yml"), rawAuth, 0600)

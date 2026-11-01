@@ -48,7 +48,7 @@ type Policy struct {
 	Table       string   `yaml:"table" json:"table"`
 	Enabled     *bool    `yaml:"enabled,omitempty" json:"enabled,omitempty"`
 	Columns     []string `yaml:"columns" json:"columns"`
-	MaxRows     int      `yaml:"max_rows,omitempty" json:"max_rows"`
+	MaxRows     int      `yaml:"maxRows,omitempty" json:"max_rows"`
 	Scheme      Scheme   `yaml:"scheme" json:"scheme"`
 	Reason      string   `yaml:"reason" json:"reason"`
 	Alternative string   `yaml:"alternative" json:"alternative,omitempty"`
@@ -61,8 +61,8 @@ type Policy struct {
 	SQL         string `yaml:"sql" json:"sql,omitempty"`
 	// DenyUnless is a boolean SQL expression evaluated before execution; if it
 	// is false the whole statement is rejected with DenyMessage.
-	DenyUnless  string `yaml:"deny_unless" json:"deny_unless,omitempty"`
-	DenyMessage string `yaml:"deny_message" json:"deny_message,omitempty"`
+	DenyUnless  string `yaml:"denyUnless" json:"deny_unless,omitempty"`
+	DenyMessage string `yaml:"denyMessage" json:"deny_message,omitempty"`
 
 	// Compiled forms, with ${var} turned into :var; held only in memory.
 	CompiledSQL   string   `yaml:"-" json:"compiled_sql,omitempty"`

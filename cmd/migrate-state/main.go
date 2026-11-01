@@ -1,4 +1,4 @@
-// Command migrate-state upgrades per-source management SQLite to YAML offline.
+// Command migrate-state upgrades per-source SQLite and legacy YAML field names offline.
 package main
 
 import (

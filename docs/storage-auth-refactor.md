@@ -16,6 +16,7 @@ data/
       grant.yml                  # 平台逐库授权与业务身份绑定
       tables/<table>.yml          # 完整权限 SQL、结构快照、表和字段说明
       actions/<action>.yml        # 描述、参数与 JavaScript
+      action-libraries/<name>.yml # 标准 export 定义的动作公共函数库
       knowledges/<knowledge_id>.yml # 完整描述与正文，Prompts 使用同一份内容
     audit.db                     # 逐库审计，独立 SQLite
     credentials.key              # 独立 AES-256-GCM 密钥（如已生成）
@@ -23,9 +24,9 @@ data/
   oauth/signing.pem
 ```
 
-DataScope 自有 YAML 字段使用大写下划线并以 `_` 结尾，如 `REVISION_`、`USER_ID_`、`DESCRIPTION_`。API JSON 字段契约保持不变。业务表名、字段名、Action 参数名、业务标识保留原值及大小写；SQL、JavaScript、DDL 和知识正文采用 YAML 多行文本。
+DataScope 自有 YAML 字段统一使用小驼峰，如 `revision`、`userId`、`description`、`mcpEnabled`、`maxRows`。SQLite 内部字段仍使用原来的大写下划线格式，API JSON 字段契约保持不变。业务表名、字段名、Action 参数名、业务标识保留原值及大小写；SQL、JavaScript、DDL 和知识正文采用 YAML 多行文本。
 
-`database.yml` 的 `DATABASE_` 保存原数据库配置中其余设置；`READ_PASSWORD_CIPHERTEXT_`、`WRITE_PASSWORD_CIPHERTEXT_` 为专用密文字段，接口与审计均不返回。认证的 `AUTHENTICATION_` 与原 authentication JSON 对应，`POLICY_ID_` 保存逐库全局策略绑定，空值跟随全局默认。`account.yml` 文件使用 `ACCOUNTS_` 列表，`grant.yml` 使用 `GRANTS_` 列表。表文件的 `POLICY_`、`STRUCTURE_`、`ANNOTATION_` 分别保存查询权限、登记结构和人工说明；当前顺序由数据库中的 `TABLE_ORDER_` / `ACTION_ORDER_` 维护。
+`database.yml` 的 `database` 保存原数据库配置中其余设置；`readPasswordCiphertext`、`writePasswordCiphertext` 为专用密文字段，接口与审计均不返回。认证的 `authentication` 与原 authentication JSON 对应，`policyId` 保存逐库全局策略绑定，空值跟随全局默认。`account.yml` 文件使用 `accounts` 列表，`grant.yml` 使用 `grants` 列表。表文件的 `policy`、`structure`、`annotation` 分别保存查询权限、登记结构和人工说明；当前顺序由数据库中的 `tableOrder` / `actionOrder` 维护。
 
 结构扫描状态、待确认结构及最近变化报告只存扫描进程内存；重启清空，需要重新扫描后确认。已登记结构与说明放入对应表文件。知识只保存到 knowledges/，不在 database.yml 复制正文。无 template/、fragment.yml、version/、state/ 或独立 prompts/。不再持久化配置历史，新配置仅保留 revision；升级前完整历史留在 SQLite 备份。
 
@@ -39,7 +40,7 @@ API 和 MCP 必须指向相同全局 management.db 与逐库目录，并运行�
 
 源目录更新、全局认证配置与多个库的认证绑定还通过全局 `management.db.configuration-pending` 提交日志协调 YAML 和 SQLite。提交前校验所有生成目录，持久意图落盘后只能继续完成；重启或另一进程读取时自动恢复。故障时日志保留以便续作，磁盘恢复后重试；禁止手工删除仍待恢复的提交日志。正常提交后移除日志与临时目录。它不存 Action 回执，不是第二份运行时配置来源。
 
-手工改配置应停止两个服务、整体备份后修改并增加 `REVISION_`；正常运行使用 Web 或管理 MCP，以获得锁、校验、并发检查与审计。
+手工改配置应停止两个服务、整体备份后修改并增加 `revision`；正常运行使用 Web 或管理 MCP，以获得锁、校验、并发检查与审计。
 
 ## 迁移、备份与回退
 

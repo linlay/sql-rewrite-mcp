@@ -18,16 +18,17 @@ data/
       grant.yml
       tables/<table>.yml
       actions/<action>.yml
+      action-libraries/<name>.yml
       knowledges/<knowledge_id>.yml
     audit.db
     credentials.key
 ```
 
-字段遵循大写、下划线分隔且末尾带下划线，如 ID_、NAME_、DESCRIPTION_、CONTENT_、REVISION_。业务标识与参数名保持自身业务语义。SQL、JavaScript 和知识正文使用 YAML 多行文本。
+YAML 字段统一采用小驼峰，如 `id`、`name`、`description`、`content`、`revision`、`businessUserId`、`maxRows`。SQLite 内部字段仍保留大写下划线命名，API JSON 契约保持不变。业务标识与参数名保持自身业务语义。SQL、JavaScript 和知识正文使用 YAML 多行文本。
 
 不设 template/、公共 SQL fragment、version/、state/ 或独立 prompts/ 目录。每张表保存完整权限 SQL，允许重复；旧片段引用在迁移时展开并保留参数绑定。SQL 直接编写并可绑定变量，绑定变量不构成独立查询模板需求。DML 通过 Action 执行，Action 内可以 SELECT 做校验。BusinessTool/ToolParameter、business_tools 与公共片段字段已从运行时模型删除；旧格式解析仅存在于离线一次性迁移中，禁止运行时兼容。
 
-保留当前 REVISION_ 做并发保存检查，不生成历史版本目录。已登记结构放入对应表文件，派生索引和缓存在内存重建。扫描候选、最近检查状态与本进程最近 20 次变化报告仅存内存，重启重新扫描；生命周期和分进程约定见 [运行时状态](runtime-state.md)。账号密码保留哈希，连接密码保留加密方式，credentials.key 继续独立存放。迁移必须先备份、逐项校验并保留可恢复的原文件。
+保留当前 `revision` 做并发保存检查，不生成历史版本目录。已登记结构放入对应表文件，派生索引和缓存在内存重建。扫描候选、最近检查状态与本进程最近 20 次变化报告仅存内存，重启重新扫描；生命周期和分进程约定见 [运行时状态](runtime-state.md)。账号密码保留哈希，连接密码保留加密方式，credentials.key 继续独立存放。迁移必须先备份、逐项校验并保留可恢复的原文件。
 
 ## 知识复用 MCP Prompts
 

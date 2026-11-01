@@ -15,7 +15,7 @@ import (
 type Authentication struct {
 	Type              string                   `json:"type" yaml:"type"`
 	Label             string                   `json:"label,omitempty" yaml:"label,omitempty"`
-	EmployeeDirectory bool                     `json:"employee_directory,omitempty" yaml:"employee_directory,omitempty"`
+	EmployeeDirectory bool                     `json:"employee_directory,omitempty" yaml:"employeeDirectory,omitempty"`
 	Source            string                   `json:"source,omitempty" yaml:"source,omitempty"`
 	Provider          *management.AuthProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
 	Access            *management.AuthPolicy   `json:"access,omitempty" yaml:"access,omitempty"`

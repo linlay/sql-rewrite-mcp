@@ -2,11 +2,11 @@ package action
 
 // StaticSQL returns the SQL templates the Action compiler can determine.
 // It never runs JavaScript or SQL and does not establish business compatibility.
-func (d Definition) StaticSQL() ([]string, error) {
-	if err := d.Validate(); err != nil {
+func (d Definition) StaticSQL(libraries ...Library) ([]string, error) {
+	if err := d.Validate(libraries...); err != nil {
 		return nil, err
 	}
-	_, sites, err := compile(d.Script)
+	_, sites, err := compileWithLibraries(d.Script, libraries, "")
 	if err != nil {
 		return nil, err
 	}

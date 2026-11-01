@@ -26,12 +26,12 @@ type Connection struct {
 	Host         string `json:"host" yaml:"host"`
 	Port         int    `json:"port" yaml:"port"`
 	Database     string `json:"database,omitempty" yaml:"database,omitempty"`
-	ServiceName  string `json:"service_name,omitempty" yaml:"service_name,omitempty"`
+	ServiceName  string `json:"service_name,omitempty" yaml:"serviceName,omitempty"`
 	Schema       string `json:"schema" yaml:"schema"`
 	Username     string `json:"username" yaml:"username"`
-	PasswordEnv  string `json:"password_env,omitempty" yaml:"password_env,omitempty"`
-	CredentialID string `json:"credential_id,omitempty" yaml:"credential_id,omitempty"`
-	TLSMode      string `json:"tls_mode,omitempty" yaml:"tls_mode,omitempty"`
+	PasswordEnv  string `json:"password_env,omitempty" yaml:"passwordEnv,omitempty"`
+	CredentialID string `json:"credential_id,omitempty" yaml:"credentialId,omitempty"`
+	TLSMode      string `json:"tls_mode,omitempty" yaml:"tlsMode,omitempty"`
 }
 
 var credentialID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)

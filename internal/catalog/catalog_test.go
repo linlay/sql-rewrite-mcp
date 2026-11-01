@@ -385,7 +385,7 @@ func TestYAMLFilesAndLegacyMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "mcp_enabled:") || strings.Contains(string(raw), "compiled_sql:") {
+	if !strings.Contains(string(raw), "mcpEnabled:") || strings.Contains(string(raw), "compiledSql:") {
 		t.Fatalf("unexpected YAML: %s", raw)
 	}
 	if mustGet(t, migrated, "default").Config.Tables[0].Columns != nil {

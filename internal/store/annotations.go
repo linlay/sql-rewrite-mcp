@@ -3,7 +3,7 @@ package store
 // Annotations are a presentation layer. Physical SQL identifiers never change.
 // A nil comment follows the source; a pointer to "" explicitly clears it.
 type Annotation struct {
-	DisplayName string  `json:"display_name" yaml:"display_name"`
+	DisplayName string  `json:"display_name" yaml:"displayName"`
 	Comment     *string `json:"comment" yaml:"comment"`
 }
 

@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	gitee.com/chunanyong/dm v1.8.23
 	github.com/dop251/goja v0.0.0-20261028213108-85be1416108e
+	github.com/evanw/esbuild v0.28.2
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/modelcontextprotocol/go-sdk v1.8.0

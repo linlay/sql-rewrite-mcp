@@ -19,40 +19,40 @@ import (
 )
 
 type AuthProvider struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Type            string `json:"type"`
-	Enabled         bool   `json:"enabled"`
-	Issuer          string `json:"issuer,omitempty"`
-	AuthorizeURL    string `json:"authorize_url,omitempty"`
-	TokenURL        string `json:"token_url,omitempty"`
-	UserInfoURL     string `json:"userinfo_url,omitempty"`
-	AccountURL      string `json:"account_url,omitempty"`
-	ClientID        string `json:"client_id,omitempty"`
-	SecretEnv       string `json:"secret_env,omitempty"`
-	SubjectClaim    string `json:"subject_claim,omitempty"`
-	UsernameClaim   string `json:"username_claim,omitempty"`
-	BusinessIDClaim string `json:"business_id_claim,omitempty"`
+	ID              string `json:"id" yaml:"id"`
+	Name            string `json:"name" yaml:"name"`
+	Type            string `json:"type" yaml:"type"`
+	Enabled         bool   `json:"enabled" yaml:"enabled"`
+	Issuer          string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
+	AuthorizeURL    string `json:"authorize_url,omitempty" yaml:"authorizeUrl,omitempty"`
+	TokenURL        string `json:"token_url,omitempty" yaml:"tokenUrl,omitempty"`
+	UserInfoURL     string `json:"userinfo_url,omitempty" yaml:"userinfoUrl,omitempty"`
+	AccountURL      string `json:"account_url,omitempty" yaml:"accountUrl,omitempty"`
+	ClientID        string `json:"client_id,omitempty" yaml:"clientId,omitempty"`
+	SecretEnv       string `json:"secret_env,omitempty" yaml:"secretEnv,omitempty"`
+	SubjectClaim    string `json:"subject_claim,omitempty" yaml:"subjectClaim,omitempty"`
+	UsernameClaim   string `json:"username_claim,omitempty" yaml:"usernameClaim,omitempty"`
+	BusinessIDClaim string `json:"business_id_claim,omitempty" yaml:"businessIdClaim,omitempty"`
 }
 type AuthPolicy struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Mode           string   `json:"mode"`
-	ProviderID     string   `json:"provider_id,omitempty"`
-	Permissions    []string `json:"permissions,omitempty"`
-	BusinessUserID int64    `json:"business_user_id,omitempty"`
+	ID             string   `json:"id" yaml:"id"`
+	Name           string   `json:"name" yaml:"name"`
+	Mode           string   `json:"mode" yaml:"mode"`
+	ProviderID     string   `json:"provider_id,omitempty" yaml:"providerId,omitempty"`
+	Permissions    []string `json:"permissions,omitempty" yaml:"permissions,omitempty"`
+	BusinessUserID int64    `json:"business_user_id,omitempty" yaml:"businessUserId,omitempty"`
 }
 type AuthBinding struct {
-	TargetType string `json:"target_type"`
-	TargetID   string `json:"target_id"`
-	PolicyID   string `json:"policy_id"`
+	TargetType string `json:"target_type" yaml:"targetType"`
+	TargetID   string `json:"target_id" yaml:"targetId"`
+	PolicyID   string `json:"policy_id" yaml:"policyId"`
 }
 type AuthConfig struct {
-	Revision        int            `json:"revision"`
-	DefaultPolicyID string         `json:"default_policy_id"`
-	Providers       []AuthProvider `json:"providers"`
-	Policies        []AuthPolicy   `json:"policies"`
-	Bindings        []AuthBinding  `json:"bindings"`
+	Revision        int            `json:"revision" yaml:"revision"`
+	DefaultPolicyID string         `json:"default_policy_id" yaml:"defaultPolicyId"`
+	Providers       []AuthProvider `json:"providers" yaml:"providers"`
+	Policies        []AuthPolicy   `json:"policies" yaml:"policies"`
+	Bindings        []AuthBinding  `json:"bindings" yaml:"bindings"`
 }
 
 // DatabaseAuthConnection is stored in the owning source's SOURCE_CONFIG.
@@ -63,10 +63,10 @@ type DatabaseAuthConnection struct {
 	Provider *AuthProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
 }
 type ResolvedAuth struct {
-	Source   string       `json:"source,omitempty"`
-	Policy   AuthPolicy   `json:"policy"`
-	Provider AuthProvider `json:"provider"`
-	Revision int          `json:"revision"`
+	Source   string       `json:"source,omitempty" yaml:"source,omitempty"`
+	Policy   AuthPolicy   `json:"policy" yaml:"policy"`
+	Provider AuthProvider `json:"provider" yaml:"provider"`
+	Revision int          `json:"revision" yaml:"revision"`
 }
 
 func (s *Store) initAuth() error {
@@ -92,6 +92,10 @@ func (s *Store) initAuth() error {
 	return s.SaveAuthConfig(context.Background(), cfg)
 }
 func (s *Store) AuthConfig(ctx context.Context) (AuthConfig, error) {
+	return s.authConfig(ctx, true)
+}
+
+func (s *Store) authConfig(ctx context.Context, includeDatabaseBindings bool) (AuthConfig, error) {
 	if err := s.recoverPending(ctx); err != nil {
 		return AuthConfig{}, err
 	}
@@ -142,6 +146,9 @@ func (s *Store) AuthConfig(ctx context.Context) (AuthConfig, error) {
 		return cfg, err
 	}
 	rows.Close()
+	if !includeDatabaseBindings {
+		return cfg, nil
+	}
 	ids, err := s.sourceIDs()
 	if err != nil {
 		return cfg, err
@@ -309,7 +316,9 @@ func (s *Store) SaveAuthConfig(ctx context.Context, cfg AuthConfig) error {
 	})
 }
 func (s *Store) ResolveAuth(ctx context.Context, kind, id string) (ResolvedAuth, error) {
-	cfg, e := s.AuthConfig(ctx)
+	// Resolve only this target. AuthConfig also enumerates every database's
+	// YAML bindings for the settings editor, which is unnecessary on requests.
+	cfg, e := s.authConfig(ctx, false)
 	if e != nil {
 		return ResolvedAuth{}, e
 	}
@@ -328,6 +337,28 @@ func (s *Store) ResolveAuth(ctx context.Context, kind, id string) (ResolvedAuth,
 			break
 		}
 	}
+	var database map[string]any
+	if kind == "DATABASE" {
+		x, err := s.Source(ctx, id)
+		if err != nil && err != sql.ErrNoRows {
+			return ResolvedAuth{}, err
+		}
+		if err == nil {
+			err = x.withState(ctx, false, func(st *sourceState) error {
+				if st.Database == nil {
+					return sql.ErrNoRows
+				}
+				database = st.Database
+				if st.BindingPolicyID != "" {
+					key = st.BindingPolicyID
+				}
+				return nil
+			})
+			if err != nil {
+				return ResolvedAuth{}, err
+			}
+		}
+	}
 	out := ResolvedAuth{Revision: cfg.Revision}
 	for _, p := range cfg.Policies {
 		if p.ID == key {
@@ -335,36 +366,26 @@ func (s *Store) ResolveAuth(ctx context.Context, kind, id string) (ResolvedAuth,
 			break
 		}
 	}
-	if kind == "DATABASE" {
-		x, err := s.Source(ctx, id)
-		if err != nil && err != sql.ErrNoRows {
+	if database != nil {
+		raw, _ := json.Marshal(database)
+		var source struct {
+			Authentication *DatabaseAuthConnection `json:"authentication" yaml:"authentication"`
+		}
+		if err := json.Unmarshal(raw, &source); err != nil {
 			return out, err
 		}
-		if err == nil {
-			d, err := x.load(ctx)
-			if err != nil {
+		if source.Authentication != nil {
+			connection := *source.Authentication
+			if err := validateDatabaseAuth(connection, cfg.Providers); err != nil {
 				return out, err
 			}
-			raw, _ := json.Marshal(d)
-			var source struct {
-				Authentication *DatabaseAuthConnection `json:"authentication"`
+			if connection.Access != nil {
+				out.Policy = *connection.Access
 			}
-			if err = json.Unmarshal(raw, &source); err != nil {
-				return out, err
-			}
-			if source.Authentication != nil {
-				connection := *source.Authentication
-				if err = validateDatabaseAuth(connection, cfg.Providers); err != nil {
-					return out, err
-				}
-				if connection.Access != nil {
-					out.Policy = *connection.Access
-				}
-				if connection.Source == "DATABASE" {
-					out.Provider = *connection.Provider
-					out.Source = "DATABASE"
-					return out, nil
-				}
+			if connection.Source == "DATABASE" {
+				out.Provider = *connection.Provider
+				out.Source = "DATABASE"
+				return out, nil
 			}
 		}
 	}
@@ -600,8 +621,8 @@ func (r ResolvedAuth) ExchangeCode(ctx context.Context, database, code, verifier
 	}
 	defer res.Body.Close()
 	var token struct {
-		Access string `json:"access_token"`
-		Type   string `json:"token_type"`
+		Access string `json:"access_token" yaml:"accessToken"`
+		Type   string `json:"token_type" yaml:"tokenType"`
 	}
 	if res.StatusCode != 200 || json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&token) != nil || !strings.EqualFold(token.Type, "Bearer") {
 		return BusinessAccount{}, "", ErrDenied

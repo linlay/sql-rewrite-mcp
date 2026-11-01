@@ -151,7 +151,7 @@ func (c *Catalog) CloneConfiguration(ctx context.Context, targetID string, req C
 				}
 			}
 			for _, a := range next.Actions {
-				queries, err := a.StaticSQL()
+				queries, err := a.StaticSQL(next.ActionLibraries...)
 				if err != nil {
 					preview.Issues = append(preview.Issues, "Action "+a.Name+": "+err.Error())
 					continue
@@ -331,7 +331,15 @@ func buildClone(source, target *Database, sourceRecords, targetRecords []managem
 			names = append(names, a.Name)
 		}
 		out.Items = append(out.Items, CloneItem{"actions", len(source.Actions), len(next.Actions), names})
+		libraryNames := []string{}
+		for _, library := range source.ActionLibraries {
+			libraryNames = append(libraryNames, library.Name)
+		}
+		if len(source.ActionLibraries) > 0 || len(next.ActionLibraries) > 0 {
+			out.Items = append(out.Items, CloneItem{"action_libraries", len(source.ActionLibraries), len(next.ActionLibraries), libraryNames})
+		}
 		next.Actions = source.Actions
+		next.ActionLibraries = source.ActionLibraries
 	}
 	result := targetRecords
 	if scope.Knowledge {

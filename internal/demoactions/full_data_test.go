@@ -82,7 +82,7 @@ func TestFullSecuritiesDemoPreviews(t *testing.T) {
 		}
 		c := c
 		t.Run(c.ID, func(t *testing.T) {
-			runner := action.Runner{Store: st, Rewriter: rw, UserID: c.UserID, Bindings: map[string]any{"userId": c.UserID, "asOf": store.DefaultAsOf.UTC().Format(time.RFC3339)}, Now: time.Now().UTC()}
+			runner := action.Runner{Libraries: bundle.ActionLibraries, Store: st, Rewriter: rw, UserID: c.UserID, Bindings: map[string]any{"userId": c.UserID, "asOf": store.DefaultAsOf.UTC().Format(time.RFC3339)}, Now: time.Now().UTC()}
 			out, e := runner.Run(context.Background(), def(t, bundle, c.Name), c.Arguments, true, nil)
 			if c.Status == "denied" {
 				if e == nil {

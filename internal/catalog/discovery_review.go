@@ -12,8 +12,8 @@ import (
 
 type PendingDiscovery struct {
 	ID          string              `json:"id" yaml:"id"`
-	BaseVersion int                 `json:"base_version" yaml:"base_version"`
-	DetectedAt  time.Time           `json:"detected_at" yaml:"detected_at"`
+	BaseVersion int                 `json:"base_version" yaml:"baseVersion"`
+	DetectedAt  time.Time           `json:"detected_at" yaml:"detectedAt"`
 	Tables      []store.TableSchema `json:"tables" yaml:"tables"`
 	Changes     []SchemaChange      `json:"changes" yaml:"changes"`
 }

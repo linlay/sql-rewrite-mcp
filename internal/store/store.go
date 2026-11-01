@@ -75,10 +75,10 @@ func (s *Store) Path() string {
 
 // QueryResult is a bounded result set.
 type QueryResult struct {
-	Columns   []string         `json:"columns"`
-	Rows      []map[string]any `json:"rows"`
-	RowCount  int              `json:"row_count"`
-	Truncated bool             `json:"truncated"`
+	Columns   []string         `json:"columns" yaml:"columns"`
+	Rows      []map[string]any `json:"rows" yaml:"rows"`
+	RowCount  int              `json:"row_count" yaml:"rowCount"`
+	Truncated bool             `json:"truncated" yaml:"truncated"`
 }
 
 // Query runs a single read-only statement and returns at most maxRows rows.
@@ -363,11 +363,11 @@ func jsonValue(v any) (any, error) {
 
 // Table describes one user table.
 type Table struct {
-	DisplayName       string `json:"display_name,omitempty"`
-	Name              string `json:"name"`
-	Comment           string `json:"comment"`
-	RowCount          int64  `json:"row_count"`
-	RowCountEstimated bool   `json:"row_count_estimated,omitempty"`
+	DisplayName       string `json:"display_name,omitempty" yaml:"displayName,omitempty"`
+	Name              string `json:"name" yaml:"name"`
+	Comment           string `json:"comment" yaml:"comment"`
+	RowCount          int64  `json:"row_count" yaml:"rowCount"`
+	RowCountEstimated bool   `json:"row_count_estimated,omitempty" yaml:"rowCountEstimated,omitempty"`
 }
 
 // Tables lists user tables with their Chinese comments and row counts.
@@ -430,24 +430,24 @@ func (s *Store) sourceTables(ctx context.Context) ([]Table, error) {
 
 // Column describes one column of a table.
 type Column struct {
-	DisplayName string  `json:"display_name,omitempty"`
-	Name        string  `json:"name"`
-	Type        string  `json:"type"`
-	NotNull     bool    `json:"not_null"`
-	PrimaryKey  bool    `json:"primary_key"`
-	Default     *string `json:"default,omitempty"`
-	References  string  `json:"references,omitempty"`
-	Comment     string  `json:"comment"`
+	DisplayName string  `json:"display_name,omitempty" yaml:"displayName,omitempty"`
+	Name        string  `json:"name" yaml:"name"`
+	Type        string  `json:"type" yaml:"type"`
+	NotNull     bool    `json:"not_null" yaml:"notNull"`
+	PrimaryKey  bool    `json:"primary_key" yaml:"primaryKey"`
+	Default     *string `json:"default,omitempty" yaml:"default,omitempty"`
+	References  string  `json:"references,omitempty" yaml:"references,omitempty"`
+	Comment     string  `json:"comment" yaml:"comment"`
 }
 
 // TableSchema is the full description of a table.
 type TableSchema struct {
-	DisplayName string   `json:"display_name,omitempty"`
-	Name        string   `json:"name"`
-	Comment     string   `json:"comment"`
-	Columns     []Column `json:"columns"`
-	Indexes     []string `json:"indexes"`
-	DDL         string   `json:"ddl"`
+	DisplayName string   `json:"display_name,omitempty" yaml:"displayName,omitempty"`
+	Name        string   `json:"name" yaml:"name"`
+	Comment     string   `json:"comment" yaml:"comment"`
+	Columns     []Column `json:"columns" yaml:"columns"`
+	Indexes     []string `json:"indexes" yaml:"indexes"`
+	DDL         string   `json:"ddl" yaml:"ddl"`
 }
 
 var ErrTableNotFound = errors.New("表不存在")

@@ -198,13 +198,13 @@ func TestActionMyQueriesUseGuardsColumnsAndLimits(t *testing.T) {
 			policy := "{table: records, scheme: CUSTOM, sql: 'SELECT * FROM main.records WHERE owner=${userId}'"
 			switch mode {
 			case "guard":
-				policy += ", deny_unless: '${userId} = 20', deny_message: 'blocked'"
+				policy += ", denyUnless: '${userId} = 20', denyMessage: 'blocked'"
 			case "column":
 				policy += ", columns: [id]"
 			case "disabled":
 				policy += ", enabled: false"
 			case "limit":
-				policy += ", max_rows: 1"
+				policy += ", maxRows: 1"
 			}
 			policy += "}"
 			cfg, e := rewrite.ParseConfig([]byte("version: 1\nschemes: [{scheme: CUSTOM, name: Owner}]\ntables:\n - " + policy))

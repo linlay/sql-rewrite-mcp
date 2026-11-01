@@ -5,18 +5,23 @@ import (
 	"fmt"
 	"reflect"
 
+	"datascope-server/internal/action"
+
 	"datascope-server/internal/management"
 	"datascope-server/internal/store"
 )
 
 func validateActions(d Database) error {
+	if err := action.ValidateLibraries(d.ActionLibraries); err != nil {
+		return err
+	}
 	seen := map[string]bool{}
 	for _, a := range d.Actions {
 		if seen[a.Name] {
 			return fmt.Errorf("action 名称重复: %s", a.Name)
 		}
 		seen[a.Name] = true
-		if e := a.Validate(); e != nil {
+		if e := a.Validate(d.ActionLibraries...); e != nil {
 			return fmt.Errorf("action %s: %w", a.Name, e)
 		}
 	}

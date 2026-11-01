@@ -19,7 +19,7 @@ type Parameter struct {
 	Enum        []any    `json:"enum,omitempty" yaml:"enum,omitempty"`
 	Min         *float64 `json:"min,omitempty" yaml:"min,omitempty"`
 	Max         *float64 `json:"max,omitempty" yaml:"max,omitempty"`
-	MaxLength   *int     `json:"max_length,omitempty" yaml:"max_length,omitempty"`
+	MaxLength   *int     `json:"max_length,omitempty" yaml:"maxLength,omitempty"`
 	Pattern     string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 }
 type Definition struct {
@@ -61,7 +61,7 @@ func (d Definition) Schema() map[string]any {
 	sort.Strings(required)
 	return map[string]any{"type": "object", "additionalProperties": false, "properties": props, "required": required}
 }
-func (d Definition) Validate() error {
+func (d Definition) Validate(libraries ...Library) error {
 	if !namePattern.MatchString(d.Name) || d.Title == "" || d.Description == "" || len(d.Script) == 0 || len(d.Script) > 100000 {
 		return fmt.Errorf("action 需要合法名称、标题、说明和最多 100000 字节的脚本")
 	}
@@ -91,7 +91,7 @@ func (d Definition) Validate() error {
 			}
 		}
 	}
-	_, sites, e := compile(d.Script)
+	_, sites, e := compileWithLibraries(d.Script, libraries, "")
 	if e != nil {
 		return e
 	}

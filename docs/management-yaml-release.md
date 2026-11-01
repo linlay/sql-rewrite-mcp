@@ -33,6 +33,7 @@ data/databases/<database_id>/
     grant.yml
     tables/<table>.yml
     actions/<action>.yml
+    action-libraries/<name>.yml
     knowledges/<knowledge_id>.yml
   credentials.key
   audit.db
@@ -40,11 +41,17 @@ data/databases/<database_id>/
   .management-yaml-migrated       # 一次性升级标记
 ```
 
-自有字段使用 `ID_`、`USER_ID_`、`DESCRIPTION_`、`REVISION_` 等大写下划线格式；业务字段、Action 参数名和业务标识保留原值和大小写。SQL、DDL、JavaScript 和知识正文使用多行 YAML。账号密码仍是哈希，数据库密码仍是独立密钥加密的密文。源码、接口或日志没有新增明文密码存储。
+YAML 自有字段使用 `id`、`userId`、`description`、`revision`、`mcpEnabled` 等小驼峰格式；SQLite 自有字段命名及 HTTP JSON 契约保持不变。业务字段、Action 参数名和业务标识保留原值和大小写。SQL、DDL、JavaScript 和知识正文使用多行 YAML。账号密码仍是哈希，数据库密码仍是独立密钥加密的密文。源码、接口或日志没有新增明文密码存储。
 
 表的正式结构快照与人工字段说明进入对应 tables/ 文件。知识正文只保存一份，prompts/list 与 prompts/get 使用它。无 template/、fragment.yml、version/、state/ 或额外 prompts/。不再生成配置历史快照；当前配置保留 revision 和 ETag 并发检查。派生搜索及扫描候选的内存收敛由并行清理任务完成，正式结构说明仍持久化。
 
 API 与 MCP 每次读取当前 YAML，使用同机文件锁协调。多文件更新通过完整目录发布恢复；涉及全局目录或认证的操作另有持久提交日志协调 SQLite 和 YAML。审计失败不影响业务。Action 回执、幂等预约及确认令牌仍只存在 MCP 内存，API 通过私有 Unix socket 共享，重启清空。
+
+已有大写下划线 YAML 同样通过停服后的 `migrate-state` 命令升级：逐库保存原文件和密钥备份，转换整套字段后回读校验并原子发布，保留 revision、账号 ID、密码哈希、密文、业务标识及正文。重复执行只验证当前格式，不再次备份。运行时仅接受小驼峰；混合格式或同义键冲突会拒绝迁移。`config/rewrite.yml`、初始数据源 YAML 和内置证券演示 Action 包也统一采用小驼峰。
+
+2026-11-01 已完成本地 3 个数据库、98 份正式 YAML 的小驼峰迁移。迁移前后逐文件规范化内容指纹一致，三个数据库 revision 仍为 5、48、46；原文件及密钥备份位于 `data/legacy/yaml-20261101T110611.859920000Z/`。API 与 MCP 已恢复，登录、查询配置、11 条知识和 18 个动作读取通过，全量 `go test ./...` 通过。
+
+随后已为本地证券库迁入 `employee`、`account`、`customer` 三个公共函数库，18 个现有动作通过标准静态 `import` 引用，数据库 revision 更新为 49。动作业务函数体、参数、标题、确认开关、权限和写入设置逐项对比保持原值；原配置与密钥备份位于 `data/legacy/action-libraries-20261101T122536.532164Z/`。一次真实数据源的回滚试运行验证了导入、SQL 写入预览及业务数据不变。公共库编辑、多个导入及别名、动作保存和回滚也已在隔离数据库中通过浏览器验收。
 
 ## 本地迁移结果
 

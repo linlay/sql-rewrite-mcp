@@ -98,7 +98,7 @@ func TestDiscoveryCandidateMemoryLifecycle(t *testing.T) {
 		t.Fatal("old process retained obsolete baseline candidate")
 	}
 	for _, raw := range configurationFiles(t, source.Path) {
-		for _, field := range []string{"PENDING_:", "REPORTS_:", "CHECKED_AT_:", "ATTEMPTED_AT_:", "COMPILED_SQL_:", "RECORDS_:"} {
+		for _, field := range []string{"pending:", "reports:", "checkedAt:", "attemptedAt:", "compiledSql:", "records:"} {
 			if strings.Contains(raw, field) {
 				t.Fatal("derived state persisted", field)
 			}

@@ -75,7 +75,7 @@ func TestConfigValidation(t *testing.T) {
 		"retired fragment reference": {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE {{nope}}'}", "无法解析"},
 		"raw bind parameter":         {"  - {table: a, scheme: S, reason: r, sql: 'SELECT t.* FROM main.a AS t WHERE t.id = :userId OR t.id = ?'}", "绑定参数"},
 		"not select":                 {"  - {table: a, scheme: S, reason: r, sql: 'DELETE FROM main.a'}", "SELECT"},
-		"bad guard":                  {"  - {table: a, scheme: S, reason: r, passthrough: true, deny_unless: 'EXISTS (SELECT 1 FROM b)'}", "main.b"},
+		"bad guard":                  {"  - {table: a, scheme: S, reason: r, passthrough: true, denyUnless: 'EXISTS (SELECT 1 FROM b)'}", "main.b"},
 		"duplicate table":            {"  - {table: a, scheme: S, reason: r, passthrough: true}\n  - {table: A, scheme: S, reason: r, passthrough: true}", "重复"},
 		"misspelled key":             {"  - {table: a, scheme: S, reason: r, passthru: true}", "passthru"},
 	} {

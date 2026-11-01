@@ -185,29 +185,44 @@ func (s *Store) records(ctx context.Context, bucket string) ([]Record, error) {
 	}
 	out := []Record{}
 	for _, id := range ids {
-		x, e := s.Source(ctx, id)
+		records, e := s.RecordsForDatabase(ctx, bucket, id)
 		if e != nil {
 			return nil, e
 		}
-		if bucket == "databases" {
-			d, e := x.load(ctx)
-			if e != nil {
-				return nil, e
-			}
-			delete(d, "etag")
-			canonical, _ := json.Marshal(d)
-			d["etag"] = fmt.Sprintf("%x", sha256.Sum256(canonical))
-			b, _ := json.Marshal(d)
-			out = append(out, Record{id, string(b)})
-			continue
-		}
-		e = x.withState(ctx, false, func(st *sourceState) error { out = append(out, st.Records[bucket]...); return nil })
-		if e != nil {
-			return nil, e
-		}
+		out = append(out, records...)
 	}
 	return out, nil
 }
+
+// RecordsForDatabase reads one source under the same publication lock as Records.
+// A database-scoped request must not parse every other source's YAML tree.
+func (s *Store) RecordsForDatabase(ctx context.Context, bucket, database string) ([]Record, error) {
+	if bucket != "databases" && bucket != "knowledge" {
+		return nil, fmt.Errorf("不支持的正式配置类型 %q", bucket)
+	}
+	x, err := s.Source(ctx, database)
+	if err != nil {
+		return nil, err
+	}
+	if bucket == "databases" {
+		d, err := x.load(ctx)
+		if err != nil {
+			return nil, err
+		}
+		delete(d, "etag")
+		canonical, _ := json.Marshal(d)
+		d["etag"] = fmt.Sprintf("%x", sha256.Sum256(canonical))
+		b, err := json.Marshal(d)
+		return []Record{{database, string(b)}}, err
+	}
+	out := []Record{}
+	err = x.withState(ctx, false, func(st *sourceState) error {
+		out = append(out, st.Records[bucket]...)
+		return nil
+	})
+	return out, err
+}
+
 func (s *Store) updateRecords(ctx context.Context, bucket, kind, database string, fn func([]Record) ([]Record, error), credentials ...DatabaseCredential) error {
 	if bucket != "databases" && bucket != "knowledge" {
 		return fmt.Errorf("不支持的正式配置类型 %q", bucket)

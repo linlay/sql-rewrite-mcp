@@ -162,7 +162,7 @@ func TestDatabaseAuthenticationSelectionAndAccountTokens(t *testing.T) {
 	bytes, err := os.ReadFile(filepath.Join(source.Path, "authentication.yml"))
 	must(t, err)
 	stored := string(bytes)
-	if !strings.Contains(stored, `ACCESS_`) {
+	if !strings.Contains(stored, `access:`) || strings.Contains(stored, `ACCESS_`) {
 		t.Fatal("missing durable per-database policy")
 	}
 }

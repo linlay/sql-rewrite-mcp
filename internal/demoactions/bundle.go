@@ -24,8 +24,9 @@ import (
 var source []byte
 
 type Bundle struct {
-	Version int                 `yaml:"version"`
-	Actions []action.Definition `yaml:"actions"`
+	Version         int                 `yaml:"version"`
+	Actions         []action.Definition `yaml:"actions"`
+	ActionLibraries []action.Library    `yaml:"actionLibraries"`
 }
 
 func Load() (Bundle, error) {
@@ -39,12 +40,15 @@ func Load() (Bundle, error) {
 		return b, fmt.Errorf("证券案例包版本或数量无效")
 	}
 	seen := map[string]bool{}
+	if err := action.ValidateLibraries(b.ActionLibraries); err != nil {
+		return b, err
+	}
 	for _, a := range b.Actions {
 		if seen[a.Name] || !a.Confirm {
 			return b, fmt.Errorf("演示 action 名称重复或缺少人工确认")
 		}
 		seen[a.Name] = true
-		if e := a.Validate(); e != nil {
+		if e := a.Validate(b.ActionLibraries...); e != nil {
 			return b, fmt.Errorf("action %s: %w", a.Name, e)
 		}
 	}
@@ -145,6 +149,17 @@ func Install(ctx context.Context, app *application.Service, id string, accounts 
 		}
 	}
 	d.Actions = merged
+	for _, library := range bundle.ActionLibraries {
+		index := slices.IndexFunc(d.ActionLibraries, func(old action.Library) bool { return old.Name == library.Name })
+		if index < 0 {
+			d.ActionLibraries = append(d.ActionLibraries, library)
+		} else if !reflect.DeepEqual(d.ActionLibraries[index], library) {
+			if !replace {
+				return result, fmt.Errorf("公共函数库 %s 已存在且内容不同；如需替换请显式使用 -replace", library.Name)
+			}
+			d.ActionLibraries[index] = library
+		}
+	}
 	d.WriteEnabled = true
 	d.MCPEnabled = true
 	for _, tool := range []string{"list_actions", "describe_action", "invoke_action"} {
@@ -156,7 +171,7 @@ func Install(ctx context.Context, app *application.Service, id string, accounts 
 	if e != nil {
 		return result, e
 	}
-	if !reflect.DeepEqual(before.Actions, d.Actions) || !before.WriteEnabled || !before.MCPEnabled || !reflect.DeepEqual(before.Tools, d.Tools) {
+	if !reflect.DeepEqual(before.Actions, d.Actions) || !reflect.DeepEqual(before.ActionLibraries, d.ActionLibraries) || !before.WriteEnabled || !before.MCPEnabled || !reflect.DeepEqual(before.Tools, d.Tools) {
 		if _, e = app.Call(ctx, "save_database", application.Input{DatabaseID: id, Database: d}); e != nil {
 			return result, e
 		}

@@ -29,6 +29,8 @@ type Preview struct {
 var ErrOutcomeUnknown = errors.New("事务结果未知，请核对审计，禁止自动重试")
 
 type Runner struct {
+	Libraries    []Library
+	DatabaseID   string
 	BeforeCommit func(*Preview) error
 	Store        *store.Store
 	Rewriter     *rewrite.Rewriter
@@ -55,7 +57,7 @@ func (r Runner) Run(ctx context.Context, d Definition, args map[string]any, prev
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	program, sites, e := compile(d.Script)
+	program, sites, e := compileWithLibraries(d.Script, r.Libraries, r.DatabaseID)
 	if e != nil {
 		return nil, e
 	}
@@ -81,6 +83,7 @@ func (r Runner) Run(ctx context.Context, d Definition, args map[string]any, prev
 		}
 	}()
 	var fatal error
+	initializing := len(r.Libraries) > 0
 	abort := func(e error) goja.Value {
 		if fatal == nil {
 			fatal = e
@@ -92,6 +95,9 @@ func (r Runner) Run(ctx context.Context, d Definition, args map[string]any, prev
 	for _, s := range sites {
 		site := s
 		if e = vm.GlobalObject().DefineDataProperty(site.name, vm.ToValue(func(c goja.FunctionCall) goja.Value {
+			if initializing {
+				return abort(errors.New("模块初始化阶段不能执行 SQL，请在函数中执行"))
+			}
 			if fatal != nil {
 				return abort(fatal)
 			}
@@ -219,6 +225,7 @@ func (r Runner) Run(ctx context.Context, d Definition, args map[string]any, prev
 	if _, e = vm.RunProgram(program); e != nil {
 		return nil, e
 	}
+	initializing = false
 	run, ok := goja.AssertFunction(vm.Get("run"))
 	if !ok {
 		return nil, errors.New("脚本必须定义 function run(args, ctx)")

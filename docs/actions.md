@@ -22,7 +22,7 @@ actions:
     confirm: true
     parameters:
       id: {type: integer, description: 记录编号, min: 1}
-      name: {type: string, description: 新名称, max_length: 100}
+      name: {type: string, description: 新名称, maxLength: 100}
     script: |
       function run(args, ctx) {
         const row = my.one`SELECT id, owner_id FROM items WHERE id = ${args.id}`;
@@ -37,11 +37,11 @@ actions:
       }
 ```
 
-参数支持 `string`、`integer`、`number`、`boolean`，默认必填；可加 `optional: true`、`enum`、`min`、`max`、`max_length`、`pattern`。拒绝未知参数和 null；校验错误附完整 JSON Schema。`max_length` 按 Unicode 字符计算。`pattern` 使用 Go 正则语法。
+参数支持 `string`、`integer`、`number`、`boolean`，默认必填；可加 `optional: true`、`enum`、`min`、`max`、`maxLength`、`pattern`。拒绝未知参数和 null；校验错误附完整 JSON Schema。`maxLength` 按 Unicode 字符计算。`pattern` 使用 Go 正则语法。
 
 | 脚本接口 | 行为 |
 | --- | --- |
-| `my.one` / `my.all` | SELECT 自动应用表、字段、行策略、deny_unless 和各表行数上限 |
+| `my.one` / `my.all` | SELECT 自动应用表、字段、行策略、denyUnless 和各表行数上限 |
 | `db.one` / `db.all` | SELECT 读取可信业务数据，绕过查询策略 |
 | `db.exec` | 执行单条 INSERT / UPDATE / DELETE，返回影响行数 |
 | `deny(message)` | 中止事务，拒绝原因返回给调用方 |
@@ -52,7 +52,44 @@ actions:
 
 `one` 无记录时返回 null，`all` 返回数组。BIGINT、DECIMAL、NUMERIC 作为字符串返回；其他超出安全整数范围的整数也返回字符串。若驱动已把精确小数转换成浮点，拒绝返回，需在 SQL 中将该字段转为文本。`db.*` 读出的内容不自动脱敏，脚本作者应只返回业务需要的结果。
 
-每次操作共享一个事务，前置/后置 SELECT 都能看到本事务的修改。正常返回才提交；deny、SQL 异常、JS 异常、超时均回滚，即使脚本捕获了 deny/SQL 异常也不能提交。限制为总时限 5 秒（包括连接建立）、50 条脚本 SQL（包括权限 guard）、每次 SELECT 最多 1000 行。脚本没有网络、文件、进程、模块加载或计时器接口。
+每次操作共享一个事务，前置/后置 SELECT 都能看到本事务的修改。正常返回才提交；deny、SQL 异常、JS 异常、超时均回滚，即使脚本捕获了 deny/SQL 异常也不能提交。限制为总时限 5 秒（包括连接建立）、50 条脚本 SQL（包括权限 guard）、每次 SELECT 最多 1000 行。脚本仅支持当前数据库公共函数库的静态模块导入，没有网络、文件、进程、动态 import、require 或计时器接口。
+
+## 公共函数库与标准 import
+
+在「动作配置 → 公共函数库」管理本库的复用代码，需要 `config.read` 和 `action.write`。公共库保存为 `management/action-libraries/<name>.yml`，字段为 `name`、`title`、`description`、`script`，采用小驼峰。例如 `employee.yml`：
+
+```yaml
+name: employee
+title: 员工身份检查
+description: 校验在职员工
+script: |
+  export function operator(ctx) {
+    const user = db.one`SELECT e.employee_id, e.status, r.code AS role_code FROM employees e JOIN roles r ON r.id=e.role_id WHERE e.employee_id=${ctx.userId}`;
+    if (!user || user.status !== 'active') deny('员工不存在或已停用');
+    return user;
+  }
+
+  export function administrator(user) {
+    if (user.role_code !== 'ADMIN') deny('需要管理员身份');
+  }
+```
+
+动作的 `script` 使用 JavaScript ES Modules 静态语法；一条语句可导入多个函数，也可用 `as` 改名，或使用 `import * as employee from "employee"`。支持默认导出及模块间的静态导入、重新导出，不增加 YAML `uses` 字段：
+
+```js
+import { operator, administrator as requireAdmin } from "employee";
+
+function run(args, ctx) {
+  const user = operator(ctx);
+  return { employeeId: user.employee_id };
+}
+```
+
+模块名称只解析为当前数据库的公共库名称，不解析文件路径、URL 或 npm 包。保存时校验库与动作的语法、导出、缺失依赖、循环依赖以及全部静态 SQL；被引用的库不能直接删除。运行时只编译和装载本次动作可达的模块，不执行无关库。按模块加载，不按单个导出函数裁剪。源码及配置仍每次读取当前 YAML；不可变编译结果按数据库与全部源码内容缓存，上限 128 项和 8 MiB 源码预算。源码变化会使用新的编译结果。
+
+每次调用创建新的 JS 执行环境，模块变量、用户身份和事务不跨请求共享。模块初始化阶段禁止执行 SQL；SQL 必须放在函数体中，由动作调用时执行。公共库与动作共享同一事务、身份、SQL 条数和超时限制；导入库中的 SQL 也进入既有静态模板校验、参数绑定和权限改写。公共库修改提高数据库 revision，并使待确认预览失效；即使手动修改库却未提高 revision，代码指纹变化也会拒绝旧确认。已完成的幂等回执继续复用。
+
+配置克隆选择 Actions 时同时复制公共函数库，并检查导入库中的 SQL 与目标库结构。证券演示包的 18 个动作已改为引用 employee、account、customer 三个公共库；安装器按原有冲突与 `-replace` 规则处理库定义。
 
 UPDATE / DELETE 必须有 WHERE，并建议再次包含所有关键权限和状态条件、检查影响行数。普通 INSERT、UPDATE、DELETE 经 AST 编译为各数据库的参数和引用形式；网络库暂不支持 DML 的 WITH、UPDATE FROM、RETURNING、UPSERT、冲突处理、DELETE ORDER/LIMIT。SQLite 也禁止事务控制、DDL、PRAGMA、ATTACH、REPLACE、RETURNING 和冲突处理。写入账号本身应只获得必需表的权限。
 

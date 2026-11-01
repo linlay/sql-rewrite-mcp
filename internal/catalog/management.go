@@ -51,6 +51,26 @@ func (c *Catalog) listManaged(ctx context.Context) ([]Database, error) {
 	c.overlayDiscovery(out)
 	return out, nil
 }
+
+func (c *Catalog) getManaged(ctx context.Context, id string) (*Database, error) {
+	records, err := c.Management.RecordsForDatabase(ctx, "databases", id)
+	if err != nil {
+		return nil, err
+	}
+	var d Database
+	if err = json.Unmarshal([]byte(records[0].Data), &d); err != nil {
+		return nil, err
+	}
+	items := []Database{d}
+	c.overlayDiscovery(items)
+	p, err := c.Management.ResolveAuth(ctx, "DATABASE", id)
+	if err != nil {
+		return nil, err
+	}
+	items[0].AuthPolicyFingerprint = p.Fingerprint()
+	return &items[0], nil
+}
+
 func (c *Catalog) updateManaged(ctx context.Context, action, database string, fn func(*[]Database) error, credentials ...management.DatabaseCredential) error {
 	return c.Management.UpdateRecords(ctx, "databases", action, database, func(records []management.Record) ([]management.Record, error) {
 		items := []Database{}

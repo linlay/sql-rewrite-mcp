@@ -88,7 +88,7 @@ func MigrateToYAML(ctx context.Context, global string) ([]MigrationReport, error
 						return e
 					}
 					if _, e := os.Stat(path); e == nil {
-						st, e := readState(path)
+						st, e := readStateUsing(path, readMigrationDocument)
 						if e != nil {
 							return e
 						}

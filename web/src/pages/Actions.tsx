@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Card, Empty, Form, Input, InputNumber, Modal, Space, Switch, Tag, Tooltip, Typography, message } from 'antd';
 import { databases, managementCall, type Database, type ActionDefinition } from '../api';
 import { ActionExecutionSettings } from '../components/ActionExecutionSettings';
+import { ActionLibraries } from '../components/ActionLibraries';
 import { CodeEditor } from '../components/CodeEditor';
 import { HelpTip } from '../components/HelpTip';
 import { ParameterEditor, parameterMap, parameterRows, type ParameterRow } from '../components/ParameterEditor';
@@ -131,6 +132,7 @@ export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) 
    </Card>
    <Card className="action-editor-panel" title={<Space>{creating ? t('新增动作') : selected?.title || t('选择动作')}{dirty && <Tag color="orange">{t('未保存')}</Tag>}</Space>} extra={<Space wrap>
     <ActionExecutionSettings db={currentDB} dirty={dirty || locked} onSaved={onSaved} onError={setError} />
+    <ActionLibraries db={currentDB} disabled={dirty || locked} onSaved={next => { setCurrentDB(next); onSaved(); }} />
     {draft && <Space wrap>
     <Tooltip title={dirty ? t('保存后可试运行') : undefined}><Button disabled={!canTrial || locked} onClick={() => { setTrialName(selectedName); setResult(undefined); setTrialError(''); }}>{t('试运行')}</Button></Tooltip>
     <Button disabled={!canWrite || dirty || creating || locked} onClick={copy}>{t('复制')}</Button>
@@ -147,7 +149,7 @@ export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) 
        <Form.Item name="description" label={t('说明')} rules={[{ required: true }]}><Input /></Form.Item>
        <Form.Item name="confirm" label={t('人工确认')} valuePropName="checked"><Switch /></Form.Item>
       </div>
-      <Form.Item name="script" label={<Space size={4}>JavaScript · run(args, ctx)<HelpTip label={t('动作代码')}>{t('my.one / my.all 按查询权限读取，db.exec 使用 SQL 模板写入。人工确认动作先预览，再由用户确认执行。')}</HelpTip></Space>} rules={[{ required: true }]}><CodeEditor height="380px" readOnly={!canWrite || locked} /></Form.Item>
+      <Form.Item name="script" label={<Space size={4}>JavaScript · run(args, ctx)<HelpTip label={t('动作代码')}>{t('my.one / my.all 按查询权限读取，db.exec 使用 SQL 模板写入。人工确认动作先预览，再由用户确认执行。')}{' '}{t('可用 import { fn1, fn2 } from "库名称" 引用当前数据库的公共函数。')}</HelpTip></Space>} rules={[{ required: true }]}><CodeEditor height="380px" readOnly={!canWrite || locked} /></Form.Item>
       <Form.Item label={t('参数定义')}><ParameterEditor value={parameters} onChange={setParameters} readOnly={!canWrite || locked} /></Form.Item>
      </Form> : <Empty description={t('从左侧选择动作，或新增一个动作。')} />}
     </Space>

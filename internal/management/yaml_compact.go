@@ -6,14 +6,30 @@ import (
 )
 
 // compactDerivedYAML is called only by the explicit offline upgrade command.
-// It cleans early YAML generations that still contained operational scan data,
-// keeping an exact one-time backup and preserving the formal revision.
+// It upgrades field names and cleans early operational scan data, keeping an
+// exact one-time backup and preserving the formal revision.
 func compactDerivedYAML(path, backup string, st *sourceState) (bool, error) {
 	var root map[string]any
-	if err := readDocument(filepath.Join(path, "database.yml"), &root); err != nil {
+	if err := readMigrationDocument(filepath.Join(path, "database.yml"), &root); err != nil {
 		return false, err
 	}
 	_, dirty := root["records"]
+	// The full generation has already passed migration decoding. A canonical
+	// read failure here means an old spelling needs to be rewritten.
+	if err := filepath.WalkDir(path, func(file string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && filepath.Ext(file) == ".yml" {
+			var value any
+			if err := readDocument(file, &value); err != nil {
+				dirty = true
+			}
+		}
+		return nil
+	}); err != nil {
+		return false, err
+	}
 	if d, ok := root["database"].(map[string]any); ok {
 		if discovery, ok := d["discovery"].(map[string]any); ok {
 			for _, key := range []string{"pending", "checked_at", "attempted_at", "error", "reports"} {
@@ -29,7 +45,7 @@ func compactDerivedYAML(path, backup string, st *sourceState) (bool, error) {
 	}
 	for _, entry := range entries {
 		var table map[string]any
-		if err = readDocument(filepath.Join(path, "tables", entry.Name()), &table); err != nil {
+		if err = readMigrationDocument(filepath.Join(path, "tables", entry.Name()), &table); err != nil {
 			return false, err
 		}
 		policy, _ := table["policy"].(map[string]any)

@@ -152,7 +152,7 @@ func TestEverySecuritiesActionAndRejectionCase(t *testing.T) {
 		t.Run(c.ID, func(t *testing.T) {
 			_, db, st, rw := fixture(t)
 			invariants(t, db)
-			runner := action.Runner{Store: st, Rewriter: rw, Bindings: map[string]any{"userId": c.UserID, "asOf": "2026-10-20T00:00:00Z"}, UserID: c.UserID, Now: time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)}
+			runner := action.Runner{Libraries: bundle.ActionLibraries, Store: st, Rewriter: rw, Bindings: map[string]any{"userId": c.UserID, "asOf": "2026-10-20T00:00:00Z"}, UserID: c.UserID, Now: time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)}
 			for _, p := range c.Prepare {
 				if _, e = runner.Run(context.Background(), def(t, bundle, p.Name), p.Arguments, false, nil); e != nil {
 					t.Fatalf("prepare %s: %v", p.Name, e)

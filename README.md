@@ -32,7 +32,7 @@ internal/
   guard/            统一授权检查与可信身份上下文
   rewrite/          AST 解析、表字段限制、行权限注入、参数检查
   store/            只读查询、独立 Action 写事务、结构读取、分页与限制
-  action/           goja 脚本、固定 SQL 模板、参数校验与事务运行器
+  action/           goja 脚本、标准静态 import/export、固定 SQL 模板与事务运行器
   audit/            请求、改写、执行、权限检查及操作审计
   application/      Web 与管理 MCP 共用的领域动作
   adminapi/         受保护的后台 HTTP API
@@ -53,7 +53,7 @@ internal/
 | `data/databases/<ID>/credentials.key` | 此库连接密码的 AES-256-GCM 密钥，与业务管理 YAML 目录一起备份 |
 | `data/oauth/signing.pem` | 演示 OAuth 私钥，独立文件保存 |
 
-DataScope 自有表使用单数大写下划线名称，字段以 `_` 结尾；业务库命名不受影响。运行时会话、OAuth 授权码 / 刷新凭据和连接保留在内存。完整表结构、认证接口约定与发布清单见 [存储与认证改造](docs/storage-auth-refactor.md)。
+DataScope 自有表使用单数大写下划线名称，字段以 `_` 结尾；业务库命名不受影响。YAML 配置字段统一使用小驼峰，如 `mcpEnabled`、`maxRows`、`denyUnless`、`businessUserId`，业务标识与脚本正文保留原值；HTTP JSON 接口格式保持不变。运行时会话、OAuth 授权码 / 刷新凭据和连接保留在内存。完整表结构、认证接口约定与发布清单见 [存储与认证改造](docs/storage-auth-refactor.md)。
 
 常规查询使用业务数据库只读连接；业务 Action 使用显式启用的独立写入连接，见 [业务操作说明](docs/actions.md)。`DATABASE_ALLOWED_ROOTS` 指定允许登记的目录，macOS/Linux 多个目录用 `:` 分隔；默认 `data`。管理库、审计库及其符号链接、硬链接不能注册为业务数据源。原始查询也禁止 ATTACH 和修改连接状态的 PRAGMA，避免从已授权业务库访问内部状态。
 

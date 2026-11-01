@@ -3,7 +3,7 @@
 先用 datascope_query 的 database.get 读取当前配置和 revision。Action 共有 name、title、description、confirm、parameters、script 六个字段，保存于 database.actions。编写脚本、write_enabled、write_connection 和写入密码需要 action.write；mcp.write 无法代替。
 
 - 列出动作：`datascope_query({action:"list",args:{resourceType:"action",database_id}})`，对应 list_actions。查看单个动作：`datascope_query({action:"describe",args:{resourceType:"action",database_id,name}})`，对应 describe_action(name)。需要 action.write，返回与业务 MCP 相同格式的元数据，不包含脚本。MCP 或写入关闭时仍可查看。
-- 保存：`datascope_manage({action:"save",args:{resourceType:"action",database_id,database,write_password?}})`。仅修改 actions、write_enabled、write_connection，保留其他配置。网络写账号必须与查询账号指向同一库和 schema。write_password 直接加密保存，不能写进配置 JSON；已有密码留空保留。
+- 保存：`datascope_manage({action:"save",args:{resourceType:"action",database_id,database,write_password?}})`。仅修改 actions、action_libraries、write_enabled、write_connection，保留其他配置。公共库使用 `{name,title,description,script}`，通过 script 内的标准静态 `import { fn1, fn2 as alias } from "库名称"` 引用，库内用 export 导出；不增加 uses 字段。action_libraries 省略时保留现有库，显式空数组表示清空；存在引用时拒绝删除。网络写账号必须与查询账号指向同一库和 schema。write_password 直接加密保存，不能写进配置 JSON；已有密码留空保留。
 - 试运行：`datascope_inspect({action:"try",args:{resourceType:"action",database_id,name,arguments,request_id,business_user_id}})`。需要 action.write 和 impersonate；始终回滚，显示 SQL 和结果。修改后先保存再试运行。
 - 对业务 MCP 开放 list_actions / describe_action / invoke_action 另用 mcp.save；给业务账号授予 action 另用 business_account.save。不要自动扩大现有授权。
 

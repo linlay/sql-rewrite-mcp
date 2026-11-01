@@ -162,7 +162,7 @@ func stageState(path string, state *sourceState) (string, error) {
 			_ = os.RemoveAll(stage)
 		}
 	}()
-	for _, dir := range []string{"tables", "actions", "knowledges"} {
+	for _, dir := range []string{"tables", "actions", "action-libraries", "knowledges"} {
 		if err = os.Mkdir(filepath.Join(stage, dir), 0700); err != nil {
 			return "", err
 		}
@@ -202,7 +202,7 @@ func stageState(path string, state *sourceState) (string, error) {
 	if !bytes.Equal(wantJSON, gotJSON) {
 		return "", errors.New("YAML 逐项回读校验失败")
 	}
-	for _, dir := range []string{"tables", "actions", "knowledges", "."} {
+	for _, dir := range []string{"tables", "actions", "action-libraries", "knowledges", "."} {
 		if err = syncDir(filepath.Join(stage, dir)); err != nil {
 			return "", err
 		}
@@ -266,6 +266,36 @@ func dictionary(field string, v any) bool {
 }
 
 func convertFields(v any, encode, dynamic bool) any {
+	return convertDocumentFields(v, encode, dynamic, false)
+}
+
+// JSON keeps its existing snake_case contract; persisted YAML uses lowerCamelCase.
+func camelField(field string) string {
+	parts := strings.Split(field, "_")
+	for i := 1; i < len(parts); i++ {
+		if parts[i] != "" {
+			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+func snakeField(field string) string {
+	var out strings.Builder
+	for i, ch := range field {
+		if ch >= 'A' && ch <= 'Z' {
+			if i > 0 && (field[i-1] >= 'a' && field[i-1] <= 'z' || field[i-1] >= '0' && field[i-1] <= '9' || i+1 < len(field) && field[i+1] >= 'a' && field[i+1] <= 'z') {
+				out.WriteByte('_')
+			}
+			ch += 'a' - 'A'
+		}
+		out.WriteRune(ch)
+	}
+	return out.String()
+}
+
+// Legacy field spelling is accepted only by the explicit offline migration.
+func convertDocumentFields(v any, encode, dynamic, legacy bool) any {
 	switch x := v.(type) {
 	case map[string]any:
 		out := map[string]any{}
@@ -273,23 +303,29 @@ func convertFields(v any, encode, dynamic bool) any {
 			field, target := k, k
 			if !dynamic {
 				if encode {
-					target = strings.ToUpper(k) + "_"
+					target = camelField(k)
+					if legacy {
+						target = strings.ToUpper(k) + "_"
+					}
 				} else {
-					field = strings.ToLower(strings.TrimSuffix(k, "_"))
+					field = snakeField(k)
+					if legacy {
+						field = strings.ToLower(strings.TrimSuffix(k, "_"))
+					}
 					target = field
 				}
 			}
 			if !dynamic && field == "enum" {
 				out[target] = value
 			} else {
-				out[target] = convertFields(value, encode, !dynamic && dictionary(field, value))
+				out[target] = convertDocumentFields(value, encode, !dynamic && dictionary(field, value), legacy)
 			}
 		}
 		return out
 	case []any:
 		out := make([]any, len(x))
 		for i, value := range x {
-			out[i] = convertFields(value, encode, false)
+			out[i] = convertDocumentFields(value, encode, false, legacy)
 		}
 		return out
 	default:
@@ -307,7 +343,7 @@ func marshalDocument(v any) ([]byte, error) {
 		if n.Kind == yaml.MappingNode {
 			for i := 0; i < len(n.Content); i += 2 {
 				k, value := n.Content[i].Value, n.Content[i+1]
-				if value.Kind == yaml.ScalarNode && value.Tag == "!!str" && (strings.Contains(value.Value, "\n") || k == "SQL_" || k == "SCRIPT_" || k == "CONTENT_" || k == "DDL_" || k == "DENY_UNLESS_") {
+				if value.Kind == yaml.ScalarNode && value.Tag == "!!str" && (strings.Contains(value.Value, "\n") || k == "sql" || k == "script" || k == "content" || k == "ddl" || k == "denyUnless") {
 					value.Style = yaml.LiteralStyle
 				}
 			}
@@ -326,6 +362,14 @@ func marshalDocument(v any) ([]byte, error) {
 }
 
 func readDocument(path string, dest any) error {
+	return readDocumentFormat(path, dest, false)
+}
+
+func readMigrationDocument(path string, dest any) error {
+	return readDocumentFormat(path, dest, true)
+}
+
+func readDocumentFormat(path string, dest any, allowLegacy bool) error {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return err
@@ -346,21 +390,27 @@ func readDocument(path string, dest any) error {
 	if dec.Decode(&extra) != io.EOF {
 		return fmt.Errorf("YAML %s 只能包含一个文档", path)
 	}
-	converted := convertFields(raw, false, false)
-	canonical, err := marshalDocument(converted)
-	if err != nil {
-		return err
+	legacy := false
+	if allowLegacy {
+		if root, ok := raw.(map[string]any); ok {
+			for key := range root {
+				if strings.HasSuffix(key, "_") && key == strings.ToUpper(key) {
+					legacy = true
+					break
+				}
+			}
+		}
 	}
-	// Reject lowercase, ambiguous, or duplicate field spellings. YAML itself
+	converted := convertDocumentFields(raw, false, false, legacy)
+	// Reject noncanonical, ambiguous, or duplicate field spellings. YAML itself
 	// rejects duplicate keys; a normalized comparison enforces the public format.
-	var normalized any
-	if err = yaml.Unmarshal(canonical, &normalized); err != nil {
-		return err
-	}
+	// Compare the field mapping directly: serializing and parsing YAML again
+	// adds no validation and repeats most of the work for every file read.
+	normalized := convertDocumentFields(converted, true, false, legacy)
 	a, _ := json.Marshal(raw)
 	c, _ := json.Marshal(normalized)
 	if !bytes.Equal(a, c) {
-		return fmt.Errorf("YAML %s 字段必须采用大写下划线格式", path)
+		return fmt.Errorf("YAML %s 字段必须采用小驼峰格式；旧配置请停服后执行 migrate-state", path)
 	}
 	data, err := json.Marshal(converted)
 	if err != nil {
@@ -475,34 +525,35 @@ func stateFiles(state *sourceState) (map[string]any, error) {
 		}
 		files[filepath.Join("tables", filename)] = table
 	}
-	if actions, ok := d["actions"].([]any); ok {
-		for _, item := range actions {
-			a, ok := item.(map[string]any)
-			if !ok {
-				return nil, errors.New("Action 必须是对象")
+	for _, collection := range []struct{ field, dir, order string }{
+		{"actions", "actions", "action_order"},
+		{"action_libraries", "action-libraries", "action_library_order"},
+	} {
+		order := []string{}
+		if items, ok := d[collection.field].([]any); ok {
+			for _, item := range items {
+				value, ok := item.(map[string]any)
+				if !ok {
+					return nil, fmt.Errorf("%s 必须是对象", collection.field)
+				}
+				name, _ := value["name"].(string)
+				filename, err := documentName(name)
+				if err != nil {
+					return nil, err
+				}
+				file := filepath.Join(collection.dir, filename)
+				if _, exists := files[file]; exists {
+					return nil, fmt.Errorf("%s 名称重复", collection.field)
+				}
+				files[file] = value
+				order = append(order, name)
 			}
-			name, _ := a["name"].(string)
-			filename, err := documentName(name)
-			if err != nil {
-				return nil, err
-			}
-			if _, exists := files[filepath.Join("actions", filename)]; exists {
-				return nil, errors.New("Action 名称重复")
-			}
-			files[filepath.Join("actions", filename)] = a
 		}
-	}
-	// Order remains explicit: changing file order cannot change API semantics.
-	actionOrder := []string{}
-	if actions, ok := d["actions"].([]any); ok {
-		for _, a := range actions {
-			actionOrder = append(actionOrder, a.(map[string]any)["name"].(string))
+		if _, exists := d[collection.field]; exists {
+			d[collection.order] = order
 		}
+		delete(d, collection.field)
 	}
-	if _, ok := d["actions"]; ok {
-		d["action_order"] = actionOrder
-	}
-	delete(d, "actions")
 	for _, r := range state.Records["knowledge"] {
 		var value map[string]any
 		if err := json.Unmarshal([]byte(r.Data), &value); err != nil {
@@ -525,6 +576,10 @@ func stateFiles(state *sourceState) (map[string]any, error) {
 }
 
 func readState(path string) (*sourceState, error) {
+	return readStateUsing(path, readDocument)
+}
+
+func readStateUsing(path string, read func(string, any) error) (*sourceState, error) {
 	state := emptyState()
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return state, nil
@@ -533,7 +588,7 @@ func readState(path string) (*sourceState, error) {
 	if e != nil {
 		return nil, e
 	}
-	allowed := map[string]bool{"database.yml": false, "authentication.yml": false, "account.yml": false, "grant.yml": false, "tables": true, "actions": true, "knowledges": true}
+	allowed := map[string]bool{"database.yml": false, "authentication.yml": false, "account.yml": false, "grant.yml": false, "tables": true, "actions": true, "action-libraries": true, "knowledges": true}
 	for _, entry := range entries {
 		dir, ok := allowed[entry.Name()]
 		if !ok || entry.IsDir() != dir {
@@ -550,7 +605,7 @@ func readState(path string) (*sourceState, error) {
 			Data   json.RawMessage `json:"data"`
 		} `json:"records"`
 	}
-	if err := readDocument(filepath.Join(path, "database.yml"), &root); err != nil {
+	if err := read(filepath.Join(path, "database.yml"), &root); err != nil {
 		return nil, err
 	}
 	state.Database = root.Database
@@ -574,7 +629,7 @@ func readState(path string) (*sourceState, error) {
 		PolicyID       string `json:"policy_id"`
 		Authentication any    `json:"authentication"`
 	}
-	if err := readDocument(filepath.Join(path, "authentication.yml"), &auth); err != nil {
+	if err := read(filepath.Join(path, "authentication.yml"), &auth); err != nil {
 		return nil, err
 	}
 	state.BindingPolicyID = auth.PolicyID
@@ -590,16 +645,24 @@ func readState(path string) (*sourceState, error) {
 	var grants struct {
 		Grants []Grant `json:"grants"`
 	}
-	if err := readDocument(filepath.Join(path, "account.yml"), &accounts); err != nil {
+	if err := read(filepath.Join(path, "account.yml"), &accounts); err != nil {
 		return nil, err
 	}
 	state.Accounts = accounts.Accounts
-	if err := readDocument(filepath.Join(path, "grant.yml"), &grants); err != nil {
+	if err := read(filepath.Join(path, "grant.yml"), &grants); err != nil {
 		return nil, err
 	}
 	state.Grants = grants.Grants
-	for _, dir := range []string{"tables", "actions", "knowledges"} {
+	for _, dir := range []string{"tables", "actions", "action-libraries", "knowledges"} {
 		entries, err := os.ReadDir(filepath.Join(path, dir))
+		if os.IsNotExist(err) && dir == "action-libraries" {
+			if state.Database != nil {
+				if _, declared := state.Database["action_library_order"]; declared {
+					return nil, errors.New("公共函数库目录缺失，请恢复配置")
+				}
+			}
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -609,7 +672,7 @@ func readState(path string) (*sourceState, error) {
 				return nil, fmt.Errorf("意外的配置文件: %s", entry.Name())
 			}
 			var v map[string]any
-			if err = readDocument(filepath.Join(path, dir, entry.Name()), &v); err != nil {
+			if err = read(filepath.Join(path, dir, entry.Name()), &v); err != nil {
 				return nil, err
 			}
 			switch dir {
@@ -651,7 +714,7 @@ func readState(path string) (*sourceState, error) {
 						annotations[name] = a
 					}
 				}
-			case "actions":
+			case "actions", "action-libraries":
 				name, _ := v["name"].(string)
 				if entry.Name() != name+".yml" {
 					return nil, errors.New("Action 文件名不匹配")
@@ -670,8 +733,12 @@ func readState(path string) (*sourceState, error) {
 				state.Records["knowledge"] = append(state.Records["knowledge"], Record{key, string(b)})
 			}
 		}
-		if dir == "actions" && state.Database != nil {
-			if order, ok := state.Database["action_order"].([]any); ok {
+		if (dir == "actions" || dir == "action-libraries") && state.Database != nil {
+			field, orderField := "actions", "action_order"
+			if dir == "action-libraries" {
+				field, orderField = "action_libraries", "action_library_order"
+			}
+			if order, ok := state.Database[orderField].([]any); ok {
 				list := []any{}
 				for _, item := range order {
 					name, _ := item.(string)
@@ -685,8 +752,8 @@ func readState(path string) (*sourceState, error) {
 				if len(actions) > 0 {
 					return nil, errors.New("Action 未登记顺序")
 				}
-				state.Database["actions"] = list
-				delete(state.Database, "action_order")
+				state.Database[field] = list
+				delete(state.Database, orderField)
 			} else if len(actions) > 0 {
 				return nil, errors.New("Action 缺少顺序")
 			}

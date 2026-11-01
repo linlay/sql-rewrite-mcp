@@ -226,7 +226,11 @@ func TestConcurrentDemoDepositsDoNotLoseUpdates(t *testing.T) {
 }
 
 func runnerFor(st *store.Store, rw *rewrite.Rewriter, uid int64) action.Runner {
-	return action.Runner{Store: st, Rewriter: rw, Bindings: map[string]any{"userId": uid, "asOf": "2026-10-20T00:00:00Z"}, UserID: uid, Now: time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)}
+	bundle, err := demoactions.Load()
+	if err != nil {
+		panic(err)
+	}
+	return action.Runner{Libraries: bundle.ActionLibraries, Store: st, Rewriter: rw, Bindings: map[string]any{"userId": uid, "asOf": "2026-10-20T00:00:00Z"}, UserID: uid, Now: time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)}
 }
 
 func TestSecuritiesActionParameterErrorsNeverWrite(t *testing.T) {

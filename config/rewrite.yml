@@ -56,6 +56,6 @@ tables:
   - table: employee_scopes
     scheme: RESTRICTED
     reason: 仅管理员可查询管理范围配置
-    deny_unless: "EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN')"
-    deny_message: 仅在职管理员可查询
+    denyUnless: "EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN')"
+    denyMessage: 仅在职管理员可查询
     sql: SELECT t.* FROM main.employee_scopes AS t WHERE EXISTS (SELECT 1 FROM main.employees AS a JOIN main.roles AS r ON r.id=a.role_id WHERE a.employee_id=${userId} AND a.status='active' AND r.code='ADMIN')

@@ -206,6 +206,7 @@ export interface PendingDiscovery {id:string;base_version:number;detected_at:str
 export interface Discovery { pending?:PendingDiscovery;version:number; checked_at:string; error?:string; tables:TableSchema[]; annotations:Record<string,TableAnnotation>; reports:SchemaReport[] }
 export interface ActionParameter { type: "string"|"integer"|"number"|"boolean"; description: string; optional?: boolean; enum?: unknown[]; min?: number; max?: number; max_length?: number; pattern?: string }
 export interface ActionDefinition { name: string; title: string; description: string; confirm: boolean; parameters: Record<string, ActionParameter>; script: string }
+export interface ActionLibrary { name: string; title: string; description: string; script: string }
 export interface ActionSchema { type: string; additionalProperties: boolean; required: string[]; properties: Record<string, {type:string;description?:string;enum?:unknown[];minimum?:number;maximum?:number;maxLength?:number;pattern?:string}> }
 export interface ActionDescription { name:string;title:string;description:string;confirm:boolean;parameters?:ActionSchema }
 export interface ActionPreview { status:string;message?:string;result?:unknown;preview?:{result:unknown;writes:{sql:string;rows:number;binds:unknown[]}[]};sql?:unknown[] }
@@ -215,6 +216,7 @@ export interface AuthConfig {revision:number;default_policy_id:string;providers:
 export interface Database {
  management_path?:string; audit_path?:string; access?:{policy:AuthPolicy;provider:AuthProvider;revision:number;source?:'DATABASE'};
  actions?: ActionDefinition[];
+ action_libraries?: ActionLibrary[];
  write_enabled?: boolean;
  write_connection?: DatabaseConnection;
  discovery?:Discovery;
