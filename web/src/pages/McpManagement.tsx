@@ -100,6 +100,11 @@ export function McpManagement({ id, onSaved }: { id: string; onSaved: () => void
             </Checkbox.Group>
             {tools.includes('raw_query') && <Alert type="warning" showIcon title={t("原始查询绕过访问策略，需要单独授予全量查询权限。")} />}
           </Space>
+          <section className="mcp-capability-section" aria-label={t('Resources · 视图')}>
+           <Text strong>{t('Resources · 视图')}</Text>
+           <div className="mcp-tool-option"><Text><span className="mono">resources/list</span> · {t('视图列表')}</Text><Text type="secondary" className="mcp-capability-description">{t('列出当前数据库已发布的 HTML 视图，type 为 view。')}</Text></div>
+           <div className="mcp-tool-option"><Text><span className="mono">resources/read</span> · {t('读取视图')}</Text><Text type="secondary" className="mcp-capability-description">{t('按 URI 返回 HTML 正文，在视图配置中管理和发布。')}</Text></div>
+          </section>
         </Space>
       </Card>
       {error && <Alert type="error" showIcon title={t("MCP 配置保存失败")} description={error} closable onClose={() => setError(undefined)} />}

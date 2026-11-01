@@ -42,6 +42,9 @@ func (s *Service) CloneConfiguration(ctx context.Context, in Input, commit bool)
 		if scope.Actions {
 			permissions = append(permissions, "action.write")
 		}
+		if scope.Views {
+			permissions = append(permissions, "view.write")
+		}
 		if scope.Knowledge {
 			permissions = append(permissions, "knowledge.write")
 		}

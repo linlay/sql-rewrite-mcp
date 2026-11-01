@@ -41,8 +41,24 @@ func (h handlers) invokeAction(ctx context.Context, _ *mcp.CallToolRequest, in i
 	}
 	if in.ResultOnly {
 		out, e := h.opts.Application.ActionResult(ctx, h.opts.DatabaseID, in.Name, in.RequestID)
-		return nil, out, e
+		return h.actionViewResult(in.Name), out, e
 	}
 	out, e := h.opts.Application.InvokeAction(ctx, h.opts.DatabaseID, in.Name, in.RequestID, in.Arguments)
-	return nil, out, e
+	if e != nil {
+		return nil, out, e
+	}
+	return h.actionViewResult(in.Name), out, nil
+}
+
+func (h handlers) actionViewResult(name string) *mcp.CallToolResult {
+	if h.opts.Catalog != nil {
+		if d, err := h.opts.Catalog.Get(h.opts.DatabaseID); err == nil {
+			for _, a := range d.Actions {
+				if a.Name == name {
+					return viewResult(d.ID, a.ViewID)
+				}
+			}
+		}
+	}
+	return nil
 }

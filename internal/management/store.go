@@ -26,7 +26,7 @@ import (
 
 var ErrDenied = errors.New("无权执行此操作")
 var Permissions = []string{
-	"config.read", "config.write", "policy.write", "mcp.write", "action.write", "knowledge.read", "knowledge.write", "query", "raw_query", "audit.read", "grant", "impersonate"}
+	"config.read", "config.write", "policy.write", "mcp.write", "action.write", "knowledge.read", "knowledge.write", "view.write", "query", "raw_query", "audit.read", "grant", "impersonate"}
 var SystemPermissions = []string{"users.manage", "databases.create"}
 
 type Store struct {

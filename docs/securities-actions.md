@@ -45,6 +45,10 @@ go run ./cmd/install-demo-actions -database default -accounts E0001,E0175
 go run ./cmd/install-demo-actions -check
 ```
 
+## HTML 视图案例
+
+安装器同时安装通用查询、动作预览与结果、证券账户详情三个视图，并为 18 个 Action 关联动作视图。在「视图配置 → 业务预览」使用本人业务认证，通过 Resources 加载证券账户视图，完成查询、预览、本人确认及结果刷新。详见 [证券视图完整案例](views.md)。
+
 ## 使用流程
 
 1. 用 query 查询当前身份可见记录与现有值，再 describe_action(name) 获取参数格式。

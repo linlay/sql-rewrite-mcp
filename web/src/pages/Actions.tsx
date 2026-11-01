@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Button, Card, Empty, Form, Input, InputNumber, Modal, Space, Switch, Tag, Tooltip, Typography, message } from 'antd';
+import { Alert, Button, Card, Empty, Form, Input, InputNumber, Modal, Select, Space, Switch, Tag, Tooltip, Typography, message } from 'antd';
 import { databases, managementCall, type Database, type ActionDefinition } from '../api';
 import { ActionExecutionSettings } from '../components/ActionExecutionSettings';
 import { ActionLibraries } from '../components/ActionLibraries';
@@ -14,7 +14,7 @@ const example: ActionDefinition = {
  script: 'function run(args, ctx) {\n  const row = my.one`SELECT id FROM records WHERE id = ${args.id}`;\n  if (!row) deny("记录不存在或无权查看");\n  const n = db.exec`UPDATE records SET value = ${args.value} WHERE id = ${args.id}`;\n  if (n !== 1) deny("记录已变化，请重试");\n  return { id: args.id, updated: n };\n}',
 };
 type ActionFields = Omit<ActionDefinition, 'parameters'>;
-const fieldsOf = (action: ActionFields): ActionFields => ({ name: action.name, title: action.title, description: action.description, confirm: action.confirm, script: action.script });
+const fieldsOf = (action: ActionFields): ActionFields => ({ view_id: action.view_id, name: action.name, title: action.title, description: action.description, confirm: action.confirm, script: action.script });
 
 export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) {
  const t = useI18n();
@@ -147,6 +147,7 @@ export function Actions({ db, onSaved }: { db: Database; onSaved: () => void }) 
        <Form.Item name="name" label={t('名称')} rules={[{ required: true, pattern: /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/ }]}><Input /></Form.Item>
        <Form.Item name="title" label={t('标题')} rules={[{ required: true }]}><Input /></Form.Item>
        <Form.Item name="description" label={t('说明')} rules={[{ required: true }]}><Input /></Form.Item>
+       <Form.Item name="view_id" label={t("关联视图")}><Select allowClear placeholder={t("无关联视图")} options={(currentDB.views || []).filter(v => v.published).map(v => ({ value:v.id, label:v.name }))} /></Form.Item>
        <Form.Item name="confirm" label={t('人工确认')} valuePropName="checked"><Switch /></Form.Item>
       </div>
       <Form.Item name="script" label={<Space size={4}>JavaScript · run(args, ctx)<HelpTip label={t('动作代码')}>{t('my.one / my.all 按查询权限读取，db.exec 使用 SQL 模板写入。人工确认动作先预览，再由用户确认执行。')}{' '}{t('可用 import { fn1, fn2 } from "库名称" 引用当前数据库的公共函数。')}</HelpTip></Space>} rules={[{ required: true }]}><CodeEditor height="380px" readOnly={!canWrite || locked} /></Form.Item>

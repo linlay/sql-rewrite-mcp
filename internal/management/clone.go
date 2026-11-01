@@ -86,7 +86,7 @@ func (s *Store) CloneConfiguration(ctx context.Context, sourceID, targetID, sour
 		}
 		// Defense in depth: a clone cannot modify connections, identities,
 		// authentication, MCP routes, enable flags or any new future setting.
-		allowed := map[string]bool{"config": true, "discovery": true, "actions": true, "action_libraries": true, "revision": true}
+		allowed := map[string]bool{"config": true, "discovery": true, "actions": true, "action_libraries": true, "views": true, "query_view_id": true, "revision": true}
 		if replacement.Authentication {
 			allowed["authentication"] = true
 			allowed["authentication_revision"] = true

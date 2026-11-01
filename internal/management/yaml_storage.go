@@ -162,7 +162,7 @@ func stageState(path string, state *sourceState) (string, error) {
 			_ = os.RemoveAll(stage)
 		}
 	}()
-	for _, dir := range []string{"tables", "actions", "action-libraries", "knowledges"} {
+	for _, dir := range []string{"tables", "actions", "action-libraries", "views", "knowledges"} {
 		if err = os.Mkdir(filepath.Join(stage, dir), 0700); err != nil {
 			return "", err
 		}
@@ -202,7 +202,7 @@ func stageState(path string, state *sourceState) (string, error) {
 	if !bytes.Equal(wantJSON, gotJSON) {
 		return "", errors.New("YAML 逐项回读校验失败")
 	}
-	for _, dir := range []string{"tables", "actions", "action-libraries", "knowledges", "."} {
+	for _, dir := range []string{"tables", "actions", "action-libraries", "views", "knowledges", "."} {
 		if err = syncDir(filepath.Join(stage, dir)); err != nil {
 			return "", err
 		}
@@ -528,6 +528,7 @@ func stateFiles(state *sourceState) (map[string]any, error) {
 	for _, collection := range []struct{ field, dir, order string }{
 		{"actions", "actions", "action_order"},
 		{"action_libraries", "action-libraries", "action_library_order"},
+		{"views", "views", "view_order"},
 	} {
 		order := []string{}
 		if items, ok := d[collection.field].([]any); ok {
@@ -537,6 +538,9 @@ func stateFiles(state *sourceState) (map[string]any, error) {
 					return nil, fmt.Errorf("%s 必须是对象", collection.field)
 				}
 				name, _ := value["name"].(string)
+				if collection.field == "views" {
+					name, _ = value["id"].(string)
+				}
 				filename, err := documentName(name)
 				if err != nil {
 					return nil, err
@@ -588,7 +592,7 @@ func readStateUsing(path string, read func(string, any) error) (*sourceState, er
 	if e != nil {
 		return nil, e
 	}
-	allowed := map[string]bool{"database.yml": false, "authentication.yml": false, "account.yml": false, "grant.yml": false, "tables": true, "actions": true, "action-libraries": true, "knowledges": true}
+	allowed := map[string]bool{"database.yml": false, "authentication.yml": false, "account.yml": false, "grant.yml": false, "tables": true, "actions": true, "action-libraries": true, "views": true, "knowledges": true}
 	for _, entry := range entries {
 		dir, ok := allowed[entry.Name()]
 		if !ok || entry.IsDir() != dir {
@@ -653,12 +657,16 @@ func readStateUsing(path string, read func(string, any) error) (*sourceState, er
 		return nil, err
 	}
 	state.Grants = grants.Grants
-	for _, dir := range []string{"tables", "actions", "action-libraries", "knowledges"} {
+	for _, dir := range []string{"tables", "actions", "action-libraries", "views", "knowledges"} {
 		entries, err := os.ReadDir(filepath.Join(path, dir))
-		if os.IsNotExist(err) && dir == "action-libraries" {
+		if os.IsNotExist(err) && (dir == "action-libraries" || dir == "views") {
+			orderField := "action_library_order"
+			if dir == "views" {
+				orderField = "view_order"
+			}
 			if state.Database != nil {
-				if _, declared := state.Database["action_library_order"]; declared {
-					return nil, errors.New("公共函数库目录缺失，请恢复配置")
+				if _, declared := state.Database[orderField]; declared {
+					return nil, fmt.Errorf("%s 配置目录缺失，请恢复配置", dir)
 				}
 			}
 			continue
@@ -714,8 +722,11 @@ func readStateUsing(path string, read func(string, any) error) (*sourceState, er
 						annotations[name] = a
 					}
 				}
-			case "actions", "action-libraries":
+			case "actions", "action-libraries", "views":
 				name, _ := v["name"].(string)
+				if dir == "views" {
+					name, _ = v["id"].(string)
+				}
 				if entry.Name() != name+".yml" {
 					return nil, errors.New("Action 文件名不匹配")
 				}
@@ -733,10 +744,13 @@ func readStateUsing(path string, read func(string, any) error) (*sourceState, er
 				state.Records["knowledge"] = append(state.Records["knowledge"], Record{key, string(b)})
 			}
 		}
-		if (dir == "actions" || dir == "action-libraries") && state.Database != nil {
+		if (dir == "actions" || dir == "action-libraries" || dir == "views") && state.Database != nil {
 			field, orderField := "actions", "action_order"
 			if dir == "action-libraries" {
 				field, orderField = "action_libraries", "action_library_order"
+			}
+			if dir == "views" {
+				field, orderField = "views", "view_order"
 			}
 			if order, ok := state.Database[orderField].([]any); ok {
 				list := []any{}

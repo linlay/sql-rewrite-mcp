@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>动作预览与结果</title><!--shared--></head><body>
+<div class="top"><div><div class="eyebrow">DATASCOPE / ACTION</div><h1>动作预览与结果</h1><span class="muted">读取动作参数 → 获取真实预览 → 本人确认 → 查询回执</span></div><span class="tag">本人确认</span></div>
+<section class="card"><div class="toolbar"><label for="name">动作名称</label><input id="name" placeholder="freeze_fund_account"><button id="load" class="primary">读取参数</button></div><div id="status" role="status"></div></section><section class="card" id="action"></section>
+<script>
+const ds = window.datascope, form = ds.actionForm(document.getElementById('action'));
+document.getElementById('load').onclick = () => form.open(document.getElementById('name').value);
+ds.onData(data => { const input = data.input || {}; if (input.name) { document.getElementById('name').value = input.name; form.open(input.name, input.arguments || {}, { request_id: input.request_id, response: data.result }); } });
+</script></body></html>

@@ -27,6 +27,7 @@ import (
 	"datascope-server/internal/rewrite"
 	"datascope-server/internal/service"
 	"datascope-server/internal/store"
+	"datascope-server/internal/view"
 )
 
 var DefaultTools = []string{"list_tables", "describe_table", "query"}
@@ -34,6 +35,8 @@ var Tools = []string{"list_tables", "describe_table", "query", "raw_query", "cus
 var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
 type Database struct {
+	Views                  []view.Definition   `json:"views,omitempty" yaml:"views,omitempty"`
+	QueryViewID            string              `json:"query_view_id,omitempty" yaml:"queryViewId,omitempty"`
 	AuthPolicyFingerprint  string              `json:"-" yaml:"-"`
 	Actions                []action.Definition `json:"actions,omitempty" yaml:"actions,omitempty"`
 	ActionLibraries        []action.Library    `json:"action_libraries,omitempty" yaml:"actionLibraries,omitempty"`

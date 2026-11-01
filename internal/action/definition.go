@@ -23,6 +23,7 @@ type Parameter struct {
 	Pattern     string   `json:"pattern,omitempty" yaml:"pattern,omitempty"`
 }
 type Definition struct {
+	ViewID      string               `json:"view_id,omitempty" yaml:"viewId,omitempty"`
 	Name        string               `json:"name" yaml:"name"`
 	Title       string               `json:"title" yaml:"title"`
 	Description string               `json:"description" yaml:"description"`

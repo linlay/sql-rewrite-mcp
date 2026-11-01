@@ -22,6 +22,7 @@ type CloneScope struct {
 	Policies       bool `json:"policies"`
 	Actions        bool `json:"actions"`
 	Knowledge      bool `json:"knowledge"`
+	Views          bool `json:"views"`
 	Authentication bool `json:"authentication"`
 }
 
@@ -66,7 +67,7 @@ func (c *Catalog) CloneConfiguration(ctx context.Context, targetID string, req C
 	if c.Management == nil {
 		return nil, errors.New("克隆需要 YAML 管理存储")
 	}
-	scope := CloneScope{Tables: true, Policies: true, Actions: true, Knowledge: true}
+	scope := CloneScope{Tables: true, Policies: true, Actions: true, Knowledge: true, Views: true}
 	if req.Scope != nil {
 		scope = *req.Scope
 	}
@@ -340,6 +341,16 @@ func buildClone(source, target *Database, sourceRecords, targetRecords []managem
 		}
 		next.Actions = source.Actions
 		next.ActionLibraries = source.ActionLibraries
+	}
+	if scope.Views {
+		names := []string{}
+		for _, v := range source.Views {
+			names = append(names, v.ID)
+		}
+		if len(source.Views) > 0 || len(next.Views) > 0 {
+			out.Items = append(out.Items, CloneItem{"views", len(source.Views), len(next.Views), names})
+		}
+		next.Views, next.QueryViewID = source.Views, source.QueryViewID
 	}
 	result := targetRecords
 	if scope.Knowledge {

@@ -3,7 +3,8 @@ import { useRef, useState } from 'react';
 import { Alert, Button, Card, Empty, Input, Segmented, Select, Space, Tag, Typography } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { FormatPainterOutlined, PlayCircleOutlined, ThunderboltOutlined } from '@ant-design/icons';
-import { ApiError, api, type QueryResult, type RewritePreview } from '../api';
+import { ApiError, api, type QueryResult, type RewritePreview, type ViewDefinition } from '../api';
+import { ViewFrame } from '../components/ViewFrame';
 import { ResultTable, SchemeTag, SqlBlock, UserPicker } from '../components/shared';
 import { SqlDiff } from '../components/SqlDiff';
 import { formatSQL } from '../sqlFormat';
@@ -38,10 +39,13 @@ function ResultSummary({ outcome }: { outcome?: Outcome<QueryResult> }) {
   </div> : null;
 }
 
-export function SqlWorkbench({permissions,businessUserID}:{permissions:string[];businessUserID:number}) {
+export function SqlWorkbench({permissions,businessUserID,views = [],queryViewID = ''}:{permissions:string[];businessUserID:number;views?:ViewDefinition[];queryViewID?:string}) {
  const t=useI18n();
  const canRaw=permissions.includes("raw_query");const canImpersonate=permissions.includes("impersonate");
   const [parameters, setParameters] = useState('{}');
+ const [resultView,setResultView] = useState(queryViewID);
+ const [executedInput,setExecutedInput] = useState<Record<string,unknown>>({});
+ const selectedView=views.find(v=>v.id===resultView&&v.published);
   const [sql, setSql] = useState(examples[1].sql);
   const editor = useRef<TextAreaRef>(null);
   // Execution and formatting always read the live editor; never fall back to
@@ -81,6 +85,7 @@ export function SqlWorkbench({permissions,businessUserID}:{permissions:string[];
         const data = await api.rewrite(currentSql, userId, maxRows, values);
         setRewritten({ data });
         setResult({ data });
+        setExecutedInput({sql:currentSql,parameters:values,max_rows:maxRows});
       }
     } catch (e) {
       if (next === 'raw') setRaw(failure(e));
@@ -137,8 +142,8 @@ export function SqlWorkbench({permissions,businessUserID}:{permissions:string[];
               <Space wrap><Text type="secondary">{t("绑定变量")}</Text>{Object.entries(rewritten.data.binds).map(([key, value]) => <Tag key={key} className="mono">:{key} = {String(value)}</Tag>)}{Object.keys(rewritten.data.binds).length === 0 && <Text type="secondary">{t("无")}</Text>}</Space>
             </Space>}
           </Card>
-          <Card size="small" title={t("改写后结果 · 员工 #{0}", {"0":(userId)})} extra={<ResultSummary outcome={result} />}>
-            {!result && rewritten?.data ? <Alert type="info" showIcon message={t("SQL 已改写，尚未执行")} description={t("点击“改写后 SQL 执行”查看该员工权限范围内的结果。")} /> : <QueryOutput outcome={result} loading={action === 'execute'} />}
+          <Card size="small" title={t("改写后结果 · 员工 #{0}", {"0":(userId)})} extra={<Space><Select size="small" aria-label={t("结果视图")} style={{minWidth:140}} value={selectedView?.id||''} onChange={setResultView} options={[{value:'',label:t("结果表格")},...views.filter(v=>v.published).map(v=>({value:v.id,label:v.name}))]} /><ResultSummary outcome={result} /></Space>}>
+            {!result && rewritten?.data ? <Alert type="info" showIcon message={t("SQL 已改写，尚未执行")} description={t("点击“改写后 SQL 执行”查看该员工权限范围内的结果。")} /> : selectedView && result?.data ? <ViewFrame html={selectedView.html} data={{input:executedInput,result:result.data}} onCall={async(name,args)=>{if(name !== 'query')throw new Error(t('动作请通过业务预览中的本人认证执行。'));return api.rewrite(String(args.sql||''),userId,Number(args.max_rows||200),(args.parameters||{}) as Record<string,unknown>);}} /> : <QueryOutput outcome={result} loading={action === 'execute'} />}
           </Card>
         </section>
       </div>

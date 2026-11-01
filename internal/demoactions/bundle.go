@@ -17,6 +17,7 @@ import (
 	"datascope-server/internal/catalog"
 	"datascope-server/internal/guard"
 	"datascope-server/internal/management"
+	"datascope-server/internal/view"
 	"gopkg.in/yaml.v3"
 )
 
@@ -141,7 +142,13 @@ func Install(ctx context.Context, app *application.Service, id string, accounts 
 			merged = append(merged, a)
 			continue
 		}
-		if !reflect.DeepEqual(merged[index], a) {
+		existing := merged[index]
+		if existing.ViewID == "" {
+			existing.ViewID = "action"
+		}
+		expected := a
+		expected.ViewID = "action"
+		if !reflect.DeepEqual(existing, expected) {
 			if !replace {
 				return result, fmt.Errorf("action %s 已存在且内容不同，保留现有定义；如需替换请显式使用 -replace", a.Name)
 			}
@@ -149,6 +156,25 @@ func Install(ctx context.Context, app *application.Service, id string, accounts 
 		}
 	}
 	d.Actions = merged
+	for _, v := range view.Templates() {
+		index := slices.IndexFunc(d.Views, func(old view.Definition) bool { return old.ID == v.ID })
+		if index < 0 {
+			d.Views = append(d.Views, v)
+		} else if !EqualJSON(d.Views[index], v) {
+			if !replace {
+				return result, fmt.Errorf("视图 %s 已存在且内容不同；如需替换请显式使用 -replace", v.ID)
+			}
+			d.Views[index] = v
+		}
+	}
+	if d.QueryViewID == "" {
+		d.QueryViewID = "query"
+	}
+	for i := range d.Actions {
+		if slices.ContainsFunc(bundle.Actions, func(a action.Definition) bool { return a.Name == d.Actions[i].Name }) {
+			d.Actions[i].ViewID = "action"
+		}
+	}
 	for _, library := range bundle.ActionLibraries {
 		index := slices.IndexFunc(d.ActionLibraries, func(old action.Library) bool { return old.Name == library.Name })
 		if index < 0 {
@@ -171,7 +197,7 @@ func Install(ctx context.Context, app *application.Service, id string, accounts 
 	if e != nil {
 		return result, e
 	}
-	if !reflect.DeepEqual(before.Actions, d.Actions) || !reflect.DeepEqual(before.ActionLibraries, d.ActionLibraries) || !before.WriteEnabled || !before.MCPEnabled || !reflect.DeepEqual(before.Tools, d.Tools) {
+	if !EqualJSON(before.Views, d.Views) || before.QueryViewID != d.QueryViewID || !reflect.DeepEqual(before.Actions, d.Actions) || !reflect.DeepEqual(before.ActionLibraries, d.ActionLibraries) || !before.WriteEnabled || !before.MCPEnabled || !reflect.DeepEqual(before.Tools, d.Tools) {
 		if _, e = app.Call(ctx, "save_database", application.Input{DatabaseID: id, Database: d}); e != nil {
 			return result, e
 		}

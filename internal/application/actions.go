@@ -16,6 +16,7 @@ import (
 	"datascope-server/internal/catalog"
 	"datascope-server/internal/guard"
 	"datascope-server/internal/management"
+	"datascope-server/internal/view"
 )
 
 type ActionResponse struct {
@@ -60,7 +61,15 @@ func (s *Service) DescribeAction(ctx context.Context, database, name string) (an
 	if !d.MCPEnabled || !d.WriteEnabled {
 		return nil, management.ErrDenied
 	}
-	return describeActions(d.Actions, name)
+	out, err := describeActions(d.Actions, name)
+	if err == nil && name != "" {
+		for _, a := range d.Actions {
+			if a.Name == name && a.ViewID != "" {
+				out.(map[string]any)["view_uri"] = view.URI(d.ID, a.ViewID)
+			}
+		}
+	}
+	return out, err
 }
 
 // InspectAction exposes the same public metadata to platform action editors,
@@ -73,13 +82,24 @@ func (s *Service) InspectAction(ctx context.Context, database, name string) (any
 	if e != nil {
 		return nil, e
 	}
-	return describeActions(d.Actions, name)
+	out, err := describeActions(d.Actions, name)
+	if err == nil && name != "" {
+		for _, a := range d.Actions {
+			if a.Name == name && a.ViewID != "" {
+				out.(map[string]any)["view_uri"] = view.URI(d.ID, a.ViewID)
+			}
+		}
+	}
+	return out, err
 }
 
 func describeActions(definitions []action.Definition, name string) (any, error) {
 	actions := []map[string]any{}
 	for _, a := range definitions {
 		v := map[string]any{"name": a.Name, "title": a.Title, "description": a.Description, "confirm": a.Confirm}
+		if a.ViewID != "" {
+			v["view_id"] = a.ViewID
+		}
 		if name != "" {
 			if name != a.Name {
 				continue

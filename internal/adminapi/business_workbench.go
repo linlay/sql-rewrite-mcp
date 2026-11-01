@@ -32,8 +32,10 @@ func (b businessBearer) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func businessWorkbench(app *application.Service, w http.ResponseWriter, r *http.Request, id string) {
 	if err := guard.Require(r.Context(), app.Management, id, "action.write"); err != nil {
-		platformError(w, err)
-		return
+		if err = guard.Require(r.Context(), app.Management, id, "view.write"); err != nil {
+			platformError(w, err)
+			return
+		}
 	}
 	d, err := app.Catalog.Get(id)
 	if err != nil {
@@ -59,6 +61,8 @@ func businessWorkbench(app *application.Service, w http.ResponseWriter, r *http.
 	}
 	var in struct {
 		Operation string         `json:"operation"`
+		URI       string         `json:"uri"`
+		Cursor    string         `json:"cursor"`
 		Name      string         `json:"name"`
 		Arguments map[string]any `json:"arguments"`
 		Username  string         `json:"username"`
@@ -72,10 +76,16 @@ func businessWorkbench(app *application.Service, w http.ResponseWriter, r *http.
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	if in.Operation == "call" {
-		if !slices.Contains([]string{"list_actions", "describe_action", "invoke_action"}, in.Name) {
+	if in.Operation == "call" || in.Operation == "resources/list" || in.Operation == "resources/read" {
+		if in.Operation == "call" && !slices.Contains([]string{"list_actions", "describe_action", "invoke_action", "query", "list_tables", "describe_table"}, in.Name) {
 			platformError(w, management.ErrDenied)
 			return
+		}
+		if in.Operation == "call" && in.Name == "invoke_action" {
+			if err := guard.Require(r.Context(), app.Management, id, "action.write"); err != nil {
+				platformError(w, err)
+				return
+			}
 		}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if p.Policy.Mode != "NONE" && (token == "" || token == r.Header.Get("Authorization")) {
@@ -92,6 +102,24 @@ func businessWorkbench(app *application.Service, w http.ResponseWriter, r *http.
 			return
 		}
 		defer session.Close()
+		if in.Operation == "resources/list" {
+			out, e := session.ListResources(ctx, &mcp.ListResourcesParams{Cursor: in.Cursor})
+			if e != nil {
+				platformError(w, fmt.Errorf("无法读取视图列表"))
+				return
+			}
+			writeJSON(w, 200, out)
+			return
+		}
+		if in.Operation == "resources/read" {
+			out, e := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: in.URI})
+			if e != nil {
+				platformError(w, fmt.Errorf("视图不存在或不可访问"))
+				return
+			}
+			writeJSON(w, 200, out)
+			return
+		}
 		out, e := session.CallTool(ctx, &mcp.CallToolParams{Name: in.Name, Arguments: in.Arguments})
 		if e != nil {
 			platformError(w, fmt.Errorf("业务 MCP 调用失败；写入结果可能未知，请仅查询回执并核对审计"))

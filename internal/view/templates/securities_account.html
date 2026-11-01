@@ -1,0 +1,67 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>证券账户详情</title><!--shared--></head><body>
+<div class="top"><div><div class="eyebrow">DATASCOPE / SECURITIES</div><h1>证券账户详情</h1><span class="muted">客户资料、资产与委托</span></div><span class="tag">合成演示数据</span></div>
+<section class="card"><div class="toolbar"><label for="account">资金账号</label><input id="account" value="880000000079" maxlength="32"><button id="load" class="primary">查询账户</button></div><div id="status" role="status"></div></section>
+<section id="account-detail" hidden><section class="card"><div class="top"><h2>客户与账户</h2><span id="account-status" class="tag"></span></div><div class="details" id="customer"></div><div class="metrics" id="metrics"></div><p id="date" class="muted"></p><div class="toolbar" id="account-actions"></div></section>
+<section class="card"><div class="toolbar tabs" role="tablist" aria-label="账户记录"><button data-tab="positions" role="tab">持仓</button><button data-tab="orders" role="tab">委托</button><button data-tab="flows" role="tab">资金流水</button></div><div id="records-status" role="status"></div><div id="records" class="scroll"></div></section></section>
+<dialog id="dialog"><div class="toolbar"><button id="close">关闭</button></div><div id="action"></div></dialog>
+<script>
+const ds = window.datascope, byID = id => document.getElementById(id);
+let account, allowed = new Set(), tab = 'positions', stamp = 0, recordsStamp = 0;
+const actionForm = ds.actionForm(byID('action'), async () => { byID('dialog').close(); await load(); });
+const query = (sql, parameters) => ds.callTool('query', {sql, parameters, max_rows:200});
+async function action(name, defaults) { byID('dialog').showModal(); await actionForm.open(name, defaults); }
+function addAction(target, name, label, defaults) { if (allowed.has(name)) target.append(ds.button(label, () => action(name, defaults))); }
+function detail(label, value) { const div = ds.el('div'); div.append(ds.el('span', label), ds.el('strong', String(value ?? '—'))); return div; }
+async function load() {
+ const token = ++stamp; ++recordsStamp; const number = byID('account').value.trim();
+ account = undefined; byID('account-detail').hidden = true; ds.notice(byID('status'), '正在查询…'); byID('load').disabled = true;
+ try {
+  const result = await query('SELECT f.fund_account_no, f.customer_no, f.status AS account_status, f.currency, f.manager_id, c.name AS customer_name, c.mobile, c.risk_level, c.investor_type FROM fund_accounts f JOIN customers c ON c.customer_no = f.customer_no WHERE f.fund_account_no = :arg_account', {arg_account:number});
+  if (token !== stamp) return;
+  account = result.rows[0]; if (!account) { ds.notice(byID('status'), '没有可见的账户记录。'); return; }
+  allowed = new Set();
+  try { const list = await ds.callTool('list_actions'); if (token !== stamp) return; allowed = new Set(list.actions.map(a => a.name)); } catch { /* Query-only users can still read the account. */ }
+  const customer = byID('customer'); customer.replaceChildren();
+  for (const [label,key] of [['客户编号','customer_no'],['客户姓名','customer_name'],['手机号','mobile'],['风险等级','risk_level'],['投资者类型','investor_type'],['资金账号','fund_account_no']]) customer.append(detail(label, account[key]));
+  byID('account-status').textContent = account.account_status === 'active' ? '正常' : account.account_status === 'frozen' ? '冻结' : account.account_status;
+  byID('account-detail').hidden = false; ds.notice(byID('status'), '');
+  const actions = byID('account-actions'); actions.replaceChildren(); const accountArgs = {fund_account_no:account.fund_account_no}, customerArgs = {customer_no:account.customer_no};
+  addAction(actions,'update_customer_mobile','修改手机号',{...customerArgs,mobile:account.mobile});
+  addAction(actions,'update_customer_risk_level','调整风险等级',{...customerArgs,risk_level:account.risk_level});
+  addAction(actions, account.account_status === 'frozen' ? 'unfreeze_fund_account' : 'freeze_fund_account', account.account_status === 'frozen' ? '解冻账户' : '冻结账户',accountArgs);
+  if (account.account_status === 'active') { addAction(actions,'deposit_demo_cash','演示入金',accountArgs); addAction(actions,'withdraw_demo_cash','演示出金',accountArgs); }
+  byID('metrics').replaceChildren(); byID('date').textContent = '正在读取最新可见账期…';
+  try {
+   const balance = await query('SELECT trade_date, closing_balance, available_balance, withdrawable_balance FROM daily_balances WHERE fund_account_no = :arg_account ORDER BY trade_date DESC LIMIT 1', {arg_account:number});
+   const holdings = await query('SELECT trade_date, SUM(market_value_cents) AS market_value FROM positions WHERE fund_account_no = :arg_account GROUP BY trade_date ORDER BY trade_date DESC LIMIT 1', {arg_account:number});
+   if (token !== stamp) return;
+   const b = balance.rows[0], h = holdings.rows[0];
+   for (const [label,value] of [['资金余额',b?.closing_balance],['可用余额',b?.available_balance],['可取余额',b?.withdrawable_balance],['持仓市值',h?.market_value]]) { const card=ds.el('div',undefined,'metric'); card.append(ds.el('span',label),ds.el('strong',value === undefined ? '—' : ds.money(value))); byID('metrics').append(card); }
+   byID('date').textContent = `币种 ${account.currency} · 资金账期 ${b?.trade_date || '无记录'} · 持仓日期 ${h?.trade_date || '无记录'}`;
+  } catch(e) { if (token === stamp) byID('date').textContent = '资金或持仓读取失败：' + e.message; }
+  await records();
+ } catch(e) { if (token === stamp) { account = undefined; byID('account-detail').hidden = true; ds.notice(byID('status'), e.message, true); } }
+ finally { if (token === stamp) byID('load').disabled = false; }
+}
+async function records() {
+ if (!account) return;
+ const token = ++recordsStamp, accountToken = stamp, selected = tab, number = account.fund_account_no;
+ document.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected',String(b.dataset.tab === selected)));
+ ds.notice(byID('records-status'),'正在查询…'); byID('records').replaceChildren();
+ const sql = {
+  positions:'SELECT security_code, trade_date, quantity, available_quantity, cost_cents, close_price, market_value_cents FROM positions WHERE fund_account_no = :arg_account AND trade_date = (SELECT MAX(trade_date) FROM positions WHERE fund_account_no = :arg_account) ORDER BY security_code',
+  orders:'SELECT order_no, trade_date, security_code, side, quantity, filled_quantity, status, channel FROM orders WHERE fund_account_no = :arg_account ORDER BY trade_date DESC, order_no DESC',
+  flows:'SELECT trade_date, flow_type, amount_cents, balance_after FROM cash_flows WHERE fund_account_no = :arg_account ORDER BY id DESC'
+ }[selected];
+ try { const result=await query(sql,{arg_account:number}); if (token !== recordsStamp || accountToken !== stamp) return;
+ const labels={security_code:'证券代码',trade_date:'交易日期',quantity:'数量',available_quantity:'可用数量',cost_cents:'成本（元）',close_price:'收盘价（元）',market_value_cents:'持仓市值（元）',order_no:'委托编号',side:'方向',filled_quantity:'成交数量',status:'委托状态',channel:'来源渠道',flow_type:'流水类型',amount_cents:'金额（元）',balance_after:'流水后余额（元）'};
+ const money=new Set(['cost_cents','close_price','market_value_cents','amount_cents','balance_after']);
+ const values={BUY:'买入',SELL:'卖出',PARTIAL:'部分成交',FILLED:'全部成交',CANCELLED:'已撤销',PART_CANCELLED:'部分成交后撤销',REJECTED:'已拒绝',DEPOSIT:'入金',WITHDRAWAL:'出金'};
+ const shown={...result,columns:result.columns.map(k=>labels[k]||k),rows:result.rows.map(row=>{const out={...row};for(const k of result.columns)out[labels[k]||k]=money.has(k)?ds.money(row[k]):values[row[k]]||row[k];return out;})};
+ ds.table(byID('records'),shown,selected === 'orders' ? (td,row) => { if (Number(row.quantity) > Number(row.filled_quantity) && !['CANCELLED','PART_CANCELLED','FILLED','REJECTED'].includes(row.status)) addAction(td,'cancel_order_remainder','撤销剩余委托',{order_no:row.order_no}); } : undefined); ds.notice(byID('records-status'), '金额和价格已由分转换为元。' + (result.truncated ? '结果已截断，请缩小范围。' : '')); }
+ catch(e) { if (token === recordsStamp && accountToken === stamp) ds.notice(byID('records-status'),e.message,true); }
+}
+byID('load').onclick=load; byID('close').onclick=()=>byID('dialog').close();
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;records()});
+ds.onData(data => { const input = data.input || {}; const number = input.fund_account_no || input.parameters?.arg_account || data.result?.rows?.[0]?.fund_account_no; if (number) byID('account').value=number; load(); });
+</script></body></html>

@@ -6,7 +6,7 @@ import { useI18n } from '../ui/preferences';
 
 const permissionLabels: Record<string, string> = {
  'config.read': '查看配置', 'config.write': '修改库配置与说明', 'policy.write': '修改访问策略',
- 'action.write': '编写业务操作（可写库）', 'mcp.write': '配置 MCP', 'knowledge.write': '管理业务知识',
+ 'action.write': '编写业务操作（可写库）', 'mcp.write': '配置 MCP', 'knowledge.write': '管理业务知识', 'view.write': '管理视图',
  query: '权限查询', raw_query: '全量只读查询', 'knowledge.read': '读取业务知识',
  impersonate: '模拟业务身份', 'audit.read': '查看审计', grant: '分配权限',
 };

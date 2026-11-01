@@ -8,6 +8,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 func businessMiddleware(server *mcp.Server, h handlers) {
@@ -57,6 +58,9 @@ func businessMiddleware(server *mcp.Server, h handlers) {
 			if method == "prompts/list" || method == "prompts/get" {
 				permission = "knowledge.read"
 			}
+			if strings.HasPrefix(method, "resources/") && !slices.Contains(a.Permissions, "query") && slices.Contains(a.Permissions, "action") {
+				permission = "action"
+			}
 			if tool == "list_actions" || tool == "describe_action" || tool == "invoke_action" {
 				permission = "action"
 			}
@@ -70,6 +74,9 @@ func businessMiddleware(server *mcp.Server, h handlers) {
 			}
 			if (method == "prompts/list" || method == "prompts/get") && h.opts.Application != nil {
 				return h.knowledgePrompts(ctx, method, req)
+			}
+			if (method == "resources/list" || method == "resources/read" || method == "resources/templates/list") && h.opts.Application != nil {
+				return h.viewResources(ctx, method, req)
 			}
 			res, err := next(ctx, method, req)
 			if err == nil && method == "tools/list" {

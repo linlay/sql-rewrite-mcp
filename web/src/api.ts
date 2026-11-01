@@ -205,15 +205,18 @@ export interface AnnotationResolution {table:string;column?:string;follow_source
 export interface PendingDiscovery {id:string;base_version:number;detected_at:string;tables:TableSchema[];changes:SchemaChange[]}
 export interface Discovery { pending?:PendingDiscovery;version:number; checked_at:string; error?:string; tables:TableSchema[]; annotations:Record<string,TableAnnotation>; reports:SchemaReport[] }
 export interface ActionParameter { type: "string"|"integer"|"number"|"boolean"; description: string; optional?: boolean; enum?: unknown[]; min?: number; max?: number; max_length?: number; pattern?: string }
-export interface ActionDefinition { name: string; title: string; description: string; confirm: boolean; parameters: Record<string, ActionParameter>; script: string }
+export interface ViewDefinition { id:string; name:string; description:string; type:"view"; html:string; published:boolean }
+export interface ViewResource { uri:string; name:string; title?:string; description?:string; mimeType?:string; _meta?:{type?:string} }
+export interface ActionDefinition { view_id?:string; name: string; title: string; description: string; confirm: boolean; parameters: Record<string, ActionParameter>; script: string }
 export interface ActionLibrary { name: string; title: string; description: string; script: string }
 export interface ActionSchema { type: string; additionalProperties: boolean; required: string[]; properties: Record<string, {type:string;description?:string;enum?:unknown[];minimum?:number;maximum?:number;maxLength?:number;pattern?:string}> }
-export interface ActionDescription { name:string;title:string;description:string;confirm:boolean;parameters?:ActionSchema }
+export interface ActionDescription { view_id?:string; view_uri?:string; name:string;title:string;description:string;confirm:boolean;parameters?:ActionSchema }
 export interface ActionPreview { status:string;message?:string;result?:unknown;preview?:{result:unknown;writes:{sql:string;rows:number;binds:unknown[]}[]};sql?:unknown[] }
 export interface AuthProvider {id:string;name:string;type:string;enabled:boolean;issuer?:string;authorize_url?:string;token_url?:string;userinfo_url?:string;account_url?:string;client_id?:string;secret_env?:string;subject_claim?:string;username_claim?:string;business_id_claim?:string}
 export interface AuthPolicy {id:string;name:string;mode:'ACCOUNT'|'OAUTH'|'NONE';provider_id?:string;permissions?:string[];business_user_id?:number}
 export interface AuthConfig {revision:number;default_policy_id:string;providers:AuthProvider[];policies:AuthPolicy[];bindings:{target_type:'API'|'DATABASE';target_id:string;policy_id:string}[]}
 export interface Database {
+ views?:ViewDefinition[]; query_view_id?:string;
  management_path?:string; audit_path?:string; access?:{policy:AuthPolicy;provider:AuthProvider;revision:number;source?:'DATABASE'};
  actions?: ActionDefinition[];
  action_libraries?: ActionLibrary[];

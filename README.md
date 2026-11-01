@@ -74,6 +74,7 @@ DataScope 自有表使用单数大写下划线名称，字段以 `_` 结尾；�
 | `action.write` | 编写业务 Action、启停独立写入及维护写入账号 |
 | `knowledge.read` | 通过数据库 MCP 读取本库全部已发布知识；无需 `query`，不受表策略影响 |
 | `knowledge.write` | 编辑、发布知识 |
+| `view.write` | 编辑、发布 HTML 视图及默认查询视图 |
 | `query` | 以可信业务身份改写并执行查询 |
 | `raw_query` | 全量只读查询及表数据浏览，绕过行字段策略，需单独授予 |
 | `audit.read` | 查看当前数据库审计 |
@@ -169,6 +170,10 @@ SELECT 直接调用 query，使用当前数据库的表、字段与行权限。�
 
 不再提供命名查询、查询模板或公共 SQL 片段编辑器。旧命名查询不再注册为 MCP 工具；旧片段只在离线一次性迁移时展开为每张表完整 SQL，保留身份绑定；运行时不接受片段配置。
 
+## HTML 视图
+
+「视图配置」位于「知识配置」和「MCP 配置」之间。每库配置完整 HTML，通过标准 `resources/list` / `resources/read` 发布，`_meta.type` 为 `view`；查询和动作可以关联已发布视图。内置通用查询、动作预览和证券账户模板，证券安装器同时安装并关联案例。配置、宿主桥和完整演示见 [HTML 视图与证券案例](docs/views.md)。
+
 ## 业务操作 Action
 
 「MCP 配置」中新增业务操作编辑与始终回滚的试运行；显式启用写入后，业务账号可通过 `list_actions` / `describe_action` / `invoke_action` 使用受控 JavaScript 操作。框架负责 SQL 参数绑定、权限查询、事务、超时、运行期内存幂等、预览、本人登录确认及审计。配置、完整示例和故障恢复见 [业务操作 Action](docs/actions.md)。证券演示库可运行 `make install-demo-actions` 安装 18 种现成操作；覆盖表、37 个正常/拒绝案例及账号说明见 [证券 Action 案例](docs/securities-actions.md)，数据库结构和发布方式见 [发布清单](docs/securities-actions-release.md)。
@@ -179,7 +184,7 @@ SELECT 直接调用 query，使用当前数据库的表、字段与行权限。�
 
 工具区另提供「动作工作台」：获取动作列表 → 选择动作查看参数 Schema → 填写参数与业务身份 → 试运行。各步显示请求、响应和耗时，试运行展示结果及 SQL 写入计划并始终回滚；同一 request_id 重用结果。查看需要 `action.write`，试运行另需 `impersonate` 和已启用写入。工作台使用平台权限模拟，正式提交仍通过业务 MCP 的 `invoke_action` 和人工确认流程，详见 [业务操作 Action](docs/actions.md)。
 
-“知识管理”采用左侧列表、右侧编辑和保存，description 使用三行编辑，正文支持 Markdown 预览。业务知识统一通过标准 MCP Prompts 提供：prompts/list 分页返回名称、ID 和完整 description，prompts/get(name) 将同一正文包装为 user 文本消息；无提示词模板参数，不向业务 MCP 发布 search_knowledge/read_knowledge 工具。Resources 留给后续 view。
+“知识管理”采用左侧列表、右侧编辑和保存，description 使用三行编辑，正文支持 Markdown 预览。业务知识统一通过标准 MCP Prompts 提供：prompts/list 分页返回名称、ID 和完整 description，prompts/get(name) 将同一正文包装为 user 文本消息；无提示词模板参数，不向业务 MCP 发布 search_knowledge/read_knowledge 工具。视图通过标准 MCP Resources 提供。
 
 知识工作台按 prompts/list → 选择 name → prompts/get 展示参数、JSON 与耗时，并支持加载下一页及正文预览。工作台以当前平台的 knowledge.read 权限模拟；业务 MCP 使用本库业务身份执行同样的发布状态和可见性检查。知识只按数据库归属、发布状态与 knowledge.read 授权，不关联表，也不依赖 query；本库知识读者均可读取已发布的名称、描述与正文。知识 Prompts 开关与工具开关分别配置。旧知识工具开关兼容映射到知识开关，保存时清理旧工具项。
 

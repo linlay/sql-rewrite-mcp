@@ -7,8 +7,8 @@ description: 管理 DataScope 数据库登记、访问策略、MCP 配置、用�
 
 | 工具 | 用途 | 资源 |
 | --- | --- | --- |
-| `datascope_query` | 查询管理状态 | database、policy、user、business_account、grant、knowledge、audit |
-| `datascope_manage` | 创建与修改 | database、policy、mcp、action、user、business_account、grant、knowledge |
+| `datascope_query` | 查询管理状态 | database、policy、user、business_account、grant、knowledge、view、audit |
+| `datascope_manage` | 创建与修改 | database、policy、mcp、action、user、business_account、grant、knowledge、view |
 | `datascope_inspect` | 连接测试、策略校验、改写预览 | database、policy、action |
 
 按当前任务读取对应 reference，其中包含支持的动作、必需参数、权限及示例。不要将全部资源与动作任意组合；服务端拒绝不支持的组合和无关参数。
@@ -17,6 +17,7 @@ description: 管理 DataScope 数据库登记、访问策略、MCP 配置、用�
 - 修改表、行、字段访问策略，验证策略或预览 SQL：读 [策略](references/policies.md)。
 - 管理平台用户或逐库业务账号、启停账号、重置密码、分配或撤销权限：读 [用户与授权](references/permissions-users.md)。
 - 编写业务 Action、维护独立写入账号或试运行：读 [业务操作](references/actions.md)。
+- 编写、发布 HTML 视图、关联查询和动作：读 [视图](references/views.md)。
 - 编写、发布知识，区分草稿管理与已发布检索：读 [知识](references/knowledge.md)。
 - 追踪调用、排查权限或查询失败：读 [审计](references/audit.md)。
 

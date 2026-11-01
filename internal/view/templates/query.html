@@ -1,0 +1,13 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>通用查询视图</title><!--shared--></head><body>
+<div class="top"><div><div class="eyebrow">DATASCOPE / QUERY</div><h1>通用查询</h1><span class="muted">按当前业务身份查询</span></div><span class="tag">只读</span></div>
+<section class="card"><label for="sql">SQL</label><textarea id="sql" aria-label="SQL" rows="6" placeholder="SELECT … WHERE … = :arg_value"></textarea><label for="parameters">绑定参数 JSON</label><textarea id="parameters" aria-label="绑定参数 JSON" rows="2">{}</textarea><div class="toolbar"><label for="limit">最多返回</label><input id="limit" type="number" min="1" max="1000" value="200"><button id="run" class="primary">查询</button></div><div id="status" role="status"></div></section>
+<section class="card"><h2>查询结果</h2><div id="result" class="scroll"><div class="empty">执行后在这里查看结果</div></div></section>
+<script>
+const ds = window.datascope, byID = id => document.getElementById(id);
+ds.onData(data => { const input = data.input || {}; byID('sql').value = input.sql || ''; byID('parameters').value = JSON.stringify(input.parameters || {}, null, 2); byID('limit').value = input.max_rows || 200; if (data.result) ds.table(byID('result'), data.result); });
+byID('run').onclick = async () => {
+ const button = byID('run'); if (button.disabled) return; button.disabled = true;
+ try { const parameters = JSON.parse(byID('parameters').value); if (!parameters || Array.isArray(parameters) || typeof parameters !== 'object') throw new Error('绑定参数必须是 JSON 对象'); const result = await ds.callTool('query', { sql: byID('sql').value, parameters, max_rows: Number(byID('limit').value) }); ds.table(byID('result'), result); ds.notice(byID('status'), `返回 ${result.row_count} 行${result.truncated ? '，结果已截断' : ''}`); }
+ catch(e) { byID('result').replaceChildren(); ds.notice(byID('status'), e.message, true); } finally { button.disabled = false; }
+};
+</script></body></html>

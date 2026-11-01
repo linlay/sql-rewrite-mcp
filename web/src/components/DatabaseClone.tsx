@@ -4,7 +4,7 @@ import { databases, managementCall, type Database } from '../api';
 import { useAuth } from '../Auth';
 import { useI18n } from '../ui/preferences';
 
-type Scope = { tables: boolean; policies: boolean; actions: boolean; knowledge: boolean; authentication: boolean };
+type Scope = { tables: boolean; policies: boolean; actions: boolean; knowledge: boolean; views: boolean; authentication: boolean };
 type Preview = {
  source_database_id: string; source_name: string; target_database_id: string; target_name: string;
  source_revision: number; target_revision: number; source_token: string; target_token: string;
@@ -12,14 +12,14 @@ type Preview = {
  items: { scope: keyof Scope | 'action_libraries'; source_count: number; target_count: number; names: string[] }[];
  issues: string[]; warnings: string[];
 };
-const defaults: Scope = { tables: true, policies: true, actions: true, knowledge: true, authentication: false };
-const labels: Record<keyof Scope, string> = { tables: '表与字段配置', policies: 'SELECT 查询权限', actions: 'Actions', knowledge: '知识', authentication: '认证配置（默认不选）' };
+const defaults: Scope = { tables: true, policies: true, actions: true, knowledge: true, views: true, authentication: false };
+const labels: Record<keyof Scope, string> = { tables: '表与字段配置', policies: 'SELECT 查询权限', actions: 'Actions', knowledge: '知识', views: '视图配置', authentication: '认证配置（默认不选）' };
 
 export function DatabaseClone({ db, onSaved }: { db: Database; onSaved: () => void }) {
  const t = useI18n();
  const { user } = useAuth();
  const can = (p: string) => user.system_admin || !!db.permissions?.includes(p);
- const allowed: Scope = { tables: can('config.write') && can('policy.write'), policies: can('policy.write'), actions: can('action.write'), knowledge: can('knowledge.write'), authentication: user.system_admin };
+ const allowed: Scope = { tables: can('config.write') && can('policy.write'), policies: can('policy.write'), actions: can('action.write'), knowledge: can('knowledge.write'), views: can('view.write'), authentication: user.system_admin };
  const [open, setOpen] = useState(false);
  const [sources, setSources] = useState<Database[]>([]);
  const [source, setSource] = useState<string>();
@@ -80,7 +80,7 @@ export function DatabaseClone({ db, onSaved }: { db: Database; onSaved: () => vo
     {loading && <Spin description={t('正在检查目标库真实结构与引用')} />}
     {current && <>
      <Typography.Text>{t('来源 revision {source} → 目标 revision {target}', { source: preview.source_revision, target: preview.target_revision })}</Typography.Text>
-     <Descriptions bordered size="small" column={1} items={preview.items.map(item => ({ key: item.scope, label: t(item.scope === 'action_libraries' ? '公共函数库' : labels[item.scope]), children: <>
+     <Descriptions bordered size="small" column={1} items={preview.items.map(item => ({ key: item.scope, label: t(item.scope === 'action_libraries' ? '公共函数' : labels[item.scope]), children: <>
       <div>{t('来源 {source} 项，覆盖目标 {target} 项', { source: item.source_count, target: item.target_count })}</div>
       <Typography.Paragraph style={{ marginBottom: 0, maxHeight: 90, overflowY: 'auto', overflowWrap: 'anywhere' }}>{item.names.join(', ') || t('来源为空，将清空所选目标配置')}</Typography.Paragraph>
      </> }))} />

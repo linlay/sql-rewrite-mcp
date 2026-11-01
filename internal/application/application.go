@@ -8,6 +8,7 @@ import (
 	"datascope-server/internal/guard"
 	"datascope-server/internal/management"
 	"datascope-server/internal/store"
+	"datascope-server/internal/view"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -123,6 +124,13 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 	}
 	require := func(p string) error { return guard.Require(ctx, s.Management, in.DatabaseID, p) }
 	switch action {
+	case "configure_views":
+		return s.ConfigureViews(ctx, in)
+	case "list_view_templates":
+		if e := require("view.write"); e != nil {
+			return nil, e
+		}
+		return view.Templates(), nil
 	case "preview_clone_configuration", "clone_configuration":
 		return s.CloneConfiguration(ctx, in, action == "clone_configuration")
 	case "list_knowledge_prompts":
@@ -433,6 +441,11 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if old.Driver != in.Database.Driver || old.Path != in.Database.Path || !reflect.DeepEqual(old.Connection, in.Database.Connection) {
 			return nil, errors.New("连接信息登记后固定；更换数据库目标或凭据引用请新建数据源并重新配置权限")
 		}
+		if !reflect.DeepEqual(old.Views, in.Database.Views) || old.QueryViewID != in.Database.QueryViewID {
+			if e := require("view.write"); e != nil {
+				return nil, e
+			}
+		}
 		if !reflect.DeepEqual(old.Actions, in.Database.Actions) || !reflect.DeepEqual(old.ActionLibraries, in.Database.ActionLibraries) || old.WriteEnabled != in.Database.WriteEnabled || !reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) || in.WritePassword != "" {
 			if e := require("action.write"); e != nil {
 				return nil, e
@@ -459,7 +472,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if e := require("config.read"); e != nil {
 			return nil, e
 		}
-		if in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && reflect.DeepEqual(old.ActionLibraries, in.Database.ActionLibraries) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) {
+		if reflect.DeepEqual(old.Views, in.Database.Views) && old.QueryViewID == in.Database.QueryViewID && in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && reflect.DeepEqual(old.ActionLibraries, in.Database.ActionLibraries) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) {
 			return s.DatabaseView(ctx, *old), nil
 		}
 		if e := s.Catalog.SaveWithWritePassword(ctx, *in.Database, in.WritePassword); e != nil {
@@ -660,6 +673,8 @@ func (s *Service) DatabaseView(ctx context.Context, d catalog.Database) Database
 	}
 	g, _ := s.Management.Grant(ctx, u.ID, d.ID)
 	if !s.Management.Can(ctx, u.ID, d.ID, "config.read") {
+		d.Views = nil
+		d.QueryViewID = ""
 		d.Discovery = nil
 		d.Authentication = nil
 		d.Path = ""

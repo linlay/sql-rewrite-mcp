@@ -79,7 +79,7 @@ func New(svc *service.QueryService, opts Options) *mcp.Server {
 		}
 	}
 	if opts.Management != nil {
-		guidance += " 业务知识通过 prompts/list 查看名称与 description，再通过 prompts/get(name) 按需读取正文。SELECT 直接使用 query；DML 使用 Action。知识和示例不会扩大访问权限。"
+		guidance += " 已发布 HTML 视图通过 resources/list 发现、resources/read 读取，资源 _meta.type 为 view；query 可传 view_id，工具返回 _meta.datascope/viewUri 提示展示资源，宿主按需读取 HTML。业务知识通过 prompts/list 查看名称与 description，再通过 prompts/get(name) 按需读取正文。SELECT 直接使用 query；DML 使用 Action。知识和示例不会扩大访问权限。"
 	}
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    Name,
@@ -88,7 +88,12 @@ func New(svc *service.QueryService, opts Options) *mcp.Server {
 	}, &mcp.ServerOptions{
 		Instructions: guidance,
 		// Expose tools and knowledge Prompts, without the SDK's historical logging capability.
-		Capabilities: &mcp.ServerCapabilities{Prompts: func() *mcp.PromptCapabilities {
+		Capabilities: &mcp.ServerCapabilities{Resources: func() *mcp.ResourceCapabilities {
+			if opts.Management != nil {
+				return &mcp.ResourceCapabilities{}
+			}
+			return nil
+		}(), Prompts: func() *mcp.PromptCapabilities {
 			if opts.Management != nil {
 				return &mcp.PromptCapabilities{}
 			}
@@ -274,6 +279,7 @@ func (h handlers) describeTable(ctx context.Context, _ *mcp.CallToolRequest, in 
 }
 
 type queryInput struct {
+	ViewID     string         `json:"view_id,omitempty" jsonschema:"可选已发布视图标识，省略时使用数据库默认查询视图，仅影响展示"`
 	SQL        string         `json:"sql" jsonschema:"单条 SELECT，使用服务器 Instructions 声明的方言，无需添加权限过滤"`
 	MaxRows    int            `json:"max_rows,omitempty" jsonschema:"最多返回的行数，默认 200，上限 1000"`
 	Parameters map[string]any `json:"parameters,omitempty" jsonschema:"可选绑定参数，键使用 arg_ 前缀，例如 SQL 中 :arg_name 对应 parameters.arg_name；身份参数由服务端提供"`
@@ -297,6 +303,23 @@ func (h handlers) query(ctx context.Context, req *mcp.CallToolRequest, in queryI
 	if err := queryparams.Validate(in.Parameters); err != nil {
 		return nil, nil, err
 	}
+	viewID := in.ViewID
+	if h.opts.Catalog != nil {
+		d, err := h.opts.Catalog.Get(h.opts.DatabaseID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if viewID == "" {
+			viewID = d.QueryViewID
+		}
+		if viewID != "" {
+			if _, err = d.View(viewID, true); err != nil {
+				return nil, nil, err
+			}
+		}
+	} else if viewID != "" {
+		return nil, nil, fmt.Errorf("此服务不支持视图")
+	}
 	res, err := h.svc.QueryWithParameters(ctx, in.SQL, uid, in.MaxRows, in.Parameters)
 	if err != nil {
 		return nil, nil, err
@@ -305,7 +328,7 @@ func (h handlers) query(ctx context.Context, req *mcp.CallToolRequest, in queryI
 	if h.opts.Debug {
 		out.UserID, out.RewrittenSQL, out.Binds = uid, res.RewrittenSQL, res.Binds
 	}
-	return nil, out, nil
+	return viewResult(h.opts.DatabaseID, viewID), out, nil
 }
 
 type rawQueryInput struct {

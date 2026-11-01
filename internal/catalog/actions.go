@@ -12,6 +12,9 @@ import (
 )
 
 func validateActions(d Database) error {
+	if err := validateViews(d); err != nil {
+		return err
+	}
 	if err := action.ValidateLibraries(d.ActionLibraries); err != nil {
 		return err
 	}
