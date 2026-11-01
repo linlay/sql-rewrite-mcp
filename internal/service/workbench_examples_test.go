@@ -2,32 +2,34 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"gopkg.in/yaml.v3"
 	"os"
 	"testing"
 
 	"datascope-server/internal/rewrite"
 )
 
-// Use the same examples as the UI, so schema changes cannot silently break them.
+// Validate the optional securities YAML examples against the demo schema.
 func TestWorkbenchExamples(t *testing.T) {
-	data, err := os.ReadFile("../../web/src/sqlExamples.json")
+	data, err := os.ReadFile("../../config/securities-sql-examples.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var examples []struct {
-		Label string `json:"label"`
-		SQL   string `json:"sql"`
+	var config struct {
+		Examples []struct {
+			Label string `yaml:"label"`
+			SQL   string `yaml:"sql"`
+		} `yaml:"sqlExamples"`
 	}
-	if err := json.Unmarshal(data, &examples); err != nil {
+	if err := yaml.Unmarshal(data, &config); err != nil {
 		t.Fatal(err)
 	}
-	if len(examples) == 0 {
+	if len(config.Examples) == 0 {
 		t.Fatal("workbench has no examples")
 	}
 	svc := newService(t)
 	ctx := context.Background()
-	for _, example := range examples {
+	for _, example := range config.Examples {
 		t.Run(example.Label, func(t *testing.T) {
 			raw, err := svc.Store.RawQuery(ctx, example.SQL, 5)
 			if err != nil || raw.RowCount == 0 {

@@ -34,9 +34,15 @@ var DefaultTools = []string{"list_tables", "describe_table", "query"}
 var Tools = []string{"list_tables", "describe_table", "query", "raw_query", "customer_scope", "search_knowledge", "read_knowledge", "list_actions", "describe_action", "invoke_action"}
 var validID = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
+type SQLExample struct {
+	Label string `json:"label" yaml:"label"`
+	SQL   string `json:"sql" yaml:"sql"`
+}
+
 type Database struct {
 	Views                  []view.Definition   `json:"views,omitempty" yaml:"views,omitempty"`
 	QueryViewID            string              `json:"query_view_id,omitempty" yaml:"queryViewId,omitempty"`
+	SQLExamples            []SQLExample        `json:"sql_examples,omitempty" yaml:"sqlExamples,omitempty"`
 	AuthPolicyFingerprint  string              `json:"-" yaml:"-"`
 	Actions                []action.Definition `json:"actions,omitempty" yaml:"actions,omitempty"`
 	ActionLibraries        []action.Library    `json:"action_libraries,omitempty" yaml:"actionLibraries,omitempty"`

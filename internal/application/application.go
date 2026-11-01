@@ -454,7 +454,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if !reflect.DeepEqual(old.Authentication, in.Database.Authentication) && !u.SystemAdmin {
 			return nil, management.ErrDenied
 		}
-		if old.Name != in.Database.Name {
+		if old.Name != in.Database.Name || !reflect.DeepEqual(old.SQLExamples, in.Database.SQLExamples) {
 			if e := require("config.write"); e != nil {
 				return nil, e
 			}
@@ -472,7 +472,7 @@ func (s *Service) Call(ctx context.Context, action string, in Input) (out any, e
 		if e := require("config.read"); e != nil {
 			return nil, e
 		}
-		if reflect.DeepEqual(old.Views, in.Database.Views) && old.QueryViewID == in.Database.QueryViewID && in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && reflect.DeepEqual(old.ActionLibraries, in.Database.ActionLibraries) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) {
+		if reflect.DeepEqual(old.Views, in.Database.Views) && old.QueryViewID == in.Database.QueryViewID && in.WritePassword == "" && reflect.DeepEqual(old.Actions, in.Database.Actions) && reflect.DeepEqual(old.ActionLibraries, in.Database.ActionLibraries) && old.WriteEnabled == in.Database.WriteEnabled && reflect.DeepEqual(old.WriteConnection, in.Database.WriteConnection) && reflect.DeepEqual(old.Authentication, in.Database.Authentication) && old.Name == in.Database.Name && reflect.DeepEqual(old.SQLExamples, in.Database.SQLExamples) && reflect.DeepEqual(old.Config, in.Database.Config) && reflect.DeepEqual(old.KnowledgeEnabled, in.Database.KnowledgeEnabled) && old.MCPEnabled == in.Database.MCPEnabled && old.MCPPath == in.Database.MCPPath && reflect.DeepEqual(old.Tools, in.Database.Tools) {
 			return s.DatabaseView(ctx, *old), nil
 		}
 		if e := s.Catalog.SaveWithWritePassword(ctx, *in.Database, in.WritePassword); e != nil {
